@@ -68,12 +68,17 @@ class Skribble:
   # verify assets by checksum type and value
   def validate_checksum(self, asset, response):
     # verify check type
+    self.logs.append('Validating checksum of {}...'.format(asset['src']))
     type_of_check = asset['check']['type']
     value = asset['check']['value']
     if type_of_check == 'sha1':
       hash_value = hashlib.sha1(response).hexdigest()
     elif type_of_check == 'md5':
       hash_value = hashlib.md5(response).hexdigest()
+    if hash_value == value:
+      self.logs.append('{} passed checksum validation...'.format(asset['src']))
+    else:
+      self.errors.append('{} failed checksum validation...'.format(asset['src']))
     return hash_value == value
 
   # retrieve content from url
@@ -414,20 +419,20 @@ class Skribble:
     logs = set(self.logs)
     for log in logs:
       logger.info(log)
-      print(log)
+      # print(log)
 
     if len(self.errors) > 0:
       errors = set(self.errors)
       for error in errors:
         logger.error(error)
-        print(error)
+        # print(error)
     else:
       canvas = Image.alpha_composite(canvas, self.background)
       for layer in self.layers:
-          canvas = Image.alpha_composite(canvas, layer)
+        canvas = Image.alpha_composite(canvas, layer)
       string_buffer = cStringIO.StringIO()
       canvas.save(string_buffer, 'PNG')
-      self.preview(canvas)
+      return string_buffer
 
 
 def handler(event, context):
@@ -447,4 +452,5 @@ def handler(event, context):
   # connect to s3
   s3 = boto3.resource('s3')
   # upload in memory buffer to bucket
-  s3.Bucket('temp-lamda').put_object(Key=key, Body=render.getvalue())
+  if render:
+    s3.Bucket('temp-lamda').put_object(Key=key, Body=render.getvalue())
