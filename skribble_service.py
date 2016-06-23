@@ -15,7 +15,7 @@
 
 from __future__ import print_function
 from PIL import Image, ImageChops
-import logging, urllib2, cStringIO, json, boto3, os, sys, uuid, hashlib
+import logging, urllib2, cStringIO, json, boto3, os, sys, uuid, hashlib, base64
 # PIL           Python Image Library
 # urllib2       open arbitrary resources from url
 # cstringIO     create string buffer (used to open virtual image from url)
@@ -24,7 +24,8 @@ import logging, urllib2, cStringIO, json, boto3, os, sys, uuid, hashlib
 # os            Miscellaneous operating system interfaces
 # sys           System-specific parameters and functions
 # uuid          UUID objects according to RFC 4122
-#logging        info, error, debug messages
+# logging       info, error, debug messages
+# base64        encoding for posting images
 
 # initiate logger
 logger = logging.getLogger()
@@ -61,7 +62,7 @@ class Skribble:
   def valid_type (self, asset, response):
     mime_type = asset['mime_type']
     try:
-      self.logs.append('Validated type as {}...'.format(mime_type)
+      self.logs.append('Validated type as {}...'.format(mime_type))
       return response.info()['Content-type'] == mime_type
     except:
       self.errors.append('Invalid type, expected {}, instead saw {}...'.format(mime_type, response.info()['Content-type']))
@@ -202,6 +203,22 @@ class Skribble:
     # calculate y coordinate of center
     center_y = n_coordinates[1] + (resized_asset.size[1] / 2)
     return center_x, center_y
+
+  def upload_skribble (self, rendered_skribble, post_path):
+    encoded_image = base64.b64encode(rendered_skribble.read())
+    # Build the request
+    request = urllib2.Request(post_path)
+    request.add_header('Content-type', 'application/json')
+    body = {
+      'skribble_id': self.skribble_json['skribble_id'],
+      'skribble': encoded_image
+    }
+    request.add_data(body)
+    # outgoing data
+    self.logs.append('Outgoing api data {}...'.format(request.get_data()))
+    # server response
+    self.logs.append('Submitting Skribble to API...')
+    self.logs.append(urllib2.urlopen(request).read())
 
 #########################
 # TRANSFORM METHODS
@@ -365,9 +382,9 @@ class Skribble:
         transformed = self.position_scale_rotate(asset, resized_asset, scale_value, coordinates, rotation_value)
         # append transformed layer to layers list
         self.layers.append(transformed)
-        self.logs.append('{} passed preflight...'.format(item['src']))
+        self.logs.append('{} passed preflight...'.format(item['media_id']))
       except:
-        self.errors.append('{} failed preflight...'.format(item['src']))
+        self.errors.append('{} failed preflight...'.format(item['media_id']))
 
   # check messages and perform necessary manipulations
   def preflight_messages (self, messages):
@@ -395,9 +412,9 @@ class Skribble:
         transformed = self.position_scale_rotate(asset, resized_asset, scale_value, coordinates, rotation_value)
         # append transformed layer to layers list
         self.layers.append(transformed)
-        self.logs.append('{} passed preflight...'.format(message['src']))
+        self.logs.append('{} passed preflight...'.format(message['media_id']))
       except:
-        self.errors.append('{} failed preflight...'.format(message['src']))
+        self.errors.append('{} failed preflight...'.format(message['media_id']))
 
 #########################
 # RENDER METHODS
