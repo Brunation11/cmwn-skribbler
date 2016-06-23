@@ -38,7 +38,7 @@ class Skribble:
     self.skribble_json = json.load(urllib2.urlopen(url))
     self.background_asset = self.skribble_json['rules']['background']
     self.item_assets = self.skribble_json['rules']['items']
-    self.message_assets = self.skribble_json['rules']['items']
+    self.message_assets = self.skribble_json['rules']['messages']
     self.background = None
     self.layers = []
     self.logs = []
@@ -58,17 +58,18 @@ class Skribble:
       return False
 
   # validate response is imgage/png
-  def valid_type (self, response):
+  def valid_type (self, asset, response):
+    mime_type = asset['mime_type']
     try:
-      self.logs.append('Validated type as {}...'.format(response.info()['Content-type']))
-      return (response.info()['Content-type']).endswith('png')
+      self.logs.append('Validated type as {}...'.format(mime_type)
+      return response.info()['Content-type'] == mime_type
     except:
-      self.errors.append('Invalid type, expected \'png\', instead saw {}...'.format(response.info()['Content-type']))
+      self.errors.append('Invalid type, expected {}, instead saw {}...'.format(mime_type, response.info()['Content-type']))
 
   # verify assets by checksum type and value
   def validate_checksum(self, asset, response):
     # verify check type
-    self.logs.append('Validating checksum of {}...'.format(asset['src']))
+    self.logs.append('Validating checksum of {}...'.format(asset['media_id'], asset['src']))
     type_of_check = asset['check']['type']
     value = asset['check']['value']
     if type_of_check == 'sha1':
@@ -76,9 +77,9 @@ class Skribble:
     elif type_of_check == 'md5':
       hash_value = hashlib.md5(response).hexdigest()
     if hash_value == value:
-      self.logs.append('{} passed checksum validation...'.format(asset['src']))
+      self.logs.append('{} passed checksum validation...'.format(asset['media_id']))
     else:
-      self.errors.append('{} failed checksum validation...'.format(asset['src']))
+      self.errors.append('{} failed checksum validation, expected checksum {}, instead saw {}...'.format(asset['media_id'], value, hash_value))
     return hash_value == value
 
   # retrieve content from url
@@ -153,7 +154,7 @@ class Skribble:
     self.logs.append('Validating {}...'.format(url))
     if self.valid_url(url):
       response = self.url_response(url)
-      if self.valid_type(response):
+      if self.valid_type(asset, response):
         file = self.string_buffer(response)
         if self.validate_checksum(asset, response):
           self.logs.append('Validated {}...'.format(url))
