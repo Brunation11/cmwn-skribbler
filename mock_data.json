@@ -1,0 +1,231 @@
+// current checksum values are inaccurate
+{
+    "skirbble_id": "82dd5620-df30-11e5-a52e-0800274f2cef",
+    "version": 1,
+    "url": null,
+    "created": "2016-02-29T22:05:15+0000",
+    "updated": "2016-02-29T22:19:59+0000",
+    "deleted": null,
+    "status": "NOT_COMPLETE",
+    "friend_to": "82dd5620-df30-11e5-a52e-0800274877349",
+    "rules": {
+        "effect": {
+            "type": "effect",
+            "media_id": "82dd5620-df30-11e5-a52e-0800274877349",
+            "check": {
+                "type": "sha1",
+                "value": "82dd5620df3011e5a52e0800274877349"
+            },
+            "mime_type": "application/javascript",
+            "src": "https://media.changemyworldnow.com/f/82dd5620-df30-11e5-a52e-0800274877349.js"
+        },
+        "sound": {
+            "type": "sound",
+            "media_id": "82dd5620-df30-11e5-a52e-0800274877349",
+            "check": {
+                "type": "sha1",
+                "value": "82dd5620df3011e5a52e0800274877349"
+            },
+            "mime_type": "audio/mpeg",
+            "src": "https://media.changemyworldnow.com/f/82dd5620-df30-11e5-a52e-0800274877349.mp3"
+        },
+        "background": {
+            "type": "background",
+            "check": {
+                "type": "sha1",
+                "value": "82dd5620df3011e5a52e0800274877349"
+            },
+            "mime_type": "image/png",
+            "src": "http://www.fireworksguruforum.com/uploads/monthly_08_2010/post-12710-092492400%201282992812.png",
+            "media_id": "82dd5620-df30-11e5-a52e-0800274877349",
+            "can_overlap": false
+        },
+        "items": [
+            {
+                "type": "item",
+                "can_overlap": true,
+                "mime_type": "image/png",
+                "src": "http://pre05.deviantart.net/9a29/th/pre/f/2011/163/5/d/bulbasaur__old__by_blastertwo-d3ir8m6.png",
+                "media_id": "82dd5620-df30-11e5-a52e-08002x74877349",
+                "check": {
+                    "type": "sha1",
+                    "value": "82dd5620df3011e5a52e0800274877349"
+                },
+                "state": {
+                    "left": 100.831257078142695,
+                    "top": -200.23782559456399,
+                    "scale": 0.2558923622667492,
+                    "rotation": 90,
+                    "layer": 1000,
+                    "valid": true,
+                    "corners": [
+                        {
+                            "x": 542.3203059418945,
+                            "y": 474.9137374254731
+                        },
+                        {
+                            "x": 542.3203059418945,
+                            "y": 244.61061138539884
+                        },
+                        {
+                            "x": 312.0171799018201,
+                            "y": 244.61061138539884
+                        },
+                        {
+                            "x": 312.01717990182016,
+                            "y": 474.91373742547313
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "item",
+                "can_overlap": true,
+                "mime_type": "image/png",
+                "src": "http://orig09.deviantart.net/0523/f/2013/226/f/d/_007_squirtle_by_icedragon300-d4kb95g.png",
+                "media_id": "82dd5620-df30-11e5-a52e-0800274877349",
+                "check": {
+                    "type": "sha1",
+                    "value": "82dd5620df3011e5a52e0800274877349"
+                },
+                "state": {
+                    "left": -291.37032842582107,
+                    "top": -305.5039637599094,
+                    "scale": 0.22242840967085503,
+                    "rotation": 0.16934505960887114,
+                    "layer": 1000,
+                    "valid": true,
+                    "corners": [
+                        {
+                            "x": 240.42134573213147,
+                            "y": 260.0263482671302
+                        },
+                        {
+                            "x": 274.1599836012185,
+                            "y": 62.70436208213806
+                        },
+                        {
+                            "x": 76.83799741622643,
+                            "y": 28.965724213050933
+                        },
+                        {
+                            "x": 43.099359547139315,
+                            "y": 226.28771039804315
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "item",
+                "can_overlap": true,
+                "src": "http://1.bp.blogspot.com/-01W8HOu03OY/T-xLku8Yv3I/AAAAAAAAQ6U/TCxSxDXJBwo/s1600/pokemon004.png",
+                "media_id": "82dd5620-df30-11e5-a52e-0800274877349",
+                "check": {
+                    "type": "sha1",
+                    "value": "82dd5620df3011e5a52e0800274877349"
+                },
+                "mime_type": "image/png",
+                "state": {
+                    "left": 235.92298980747452,
+                    "top": -302.24235560588903,
+                    "scale": 0.2276206871044969,
+                    "rotation": -0.25258003702283816,
+                    "layer": 1000,
+                    "valid": true,
+                    "corners": [
+                        {
+                            "x": 810.6996956616041,
+                            "y": 221.33957452203686
+                        },
+                        {
+                            "x": 759.5049199354005,
+                            "y": 22.980938539981466
+                        },
+                        {
+                            "x": 561.146283953345,
+                            "y": 74.17571426618508
+                        },
+                        {
+                            "x": 612.3410596795486,
+                            "y": 272.53435024824046
+                        }
+                    ]
+                }
+            }
+        ],
+        "messages": [
+            {
+                "type": "message",
+                "src": "https://media.changemyworldnow.com/f/82dd5620-df30-11e5-a52e-0800274877349.png",
+                "media_id": "82dd5620-df30-11e5-a52e-0800274877349",
+                "check": {
+                    "type": "sha1",
+                    "value": "82dd5620df3011e5a52e0800274877349"
+                },
+                "mime_type": "image/png",
+                "state": {
+                    "left": 163.08040770101925,
+                    "top": 182.65005662514156,
+                    "scale": 0.75,
+                    "rotation": 0.00668180029395693,
+                    "layer": 10000,
+                    "valid": true,
+                    "corners": [
+                        {
+                            "x": 652.0328492286683,
+                            "y": 242.67515772026974
+                        },
+                        {
+                            "x": 652.368607195026,
+                            "y": 192.42627945828238
+                        },
+                        {
+                            "x": 233.1279661733702,
+                            "y": 189.62495553001347
+                        },
+                        {
+                            "x": 232.79220820701238,
+                            "y": 239.87383379200077
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "message",
+                "src": "https://media.changemyworldnow.com/f/82dd5620-df30-11e5-a52e-0800274877349.png",
+                "media_id": "82dd5620-df30-11e5-a52e-0800274877349",
+                "check": {
+                    "type": "sha1",
+                    "value": "82dd5620df3011e5a52e0800274877349"
+                },
+                "mime_type": "image/png",
+                "state": {
+                    "left": -16.308040770101925,
+                    "top": 331.59682899207246,
+                    "scale": 0.75,
+                    "rotation": -0.2645739567587089,
+                    "layer": 10000,
+                    "valid": true,
+                    "corners": [
+                        {
+                            "x": 366.9349034866344,
+                            "y": 346.49458268626694
+                        },
+                        {
+                            "x": 353.794625305581,
+                            "y": 297.9930817886191
+                        },
+                        {
+                            "x": 37.449014973161724,
+                            "y": 383.699075297878
+                        },
+                        {
+                            "x": 50.58929315421517,
+                            "y": 432.20057619552585
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}
