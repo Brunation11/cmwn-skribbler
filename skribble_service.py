@@ -1,4 +1,4 @@
-# Ths skribble process will take in the skribble json specification and create a flattened image. The the process MUST accept in the id of the skribble to process. The skribble process MUST complete the following validataion on the specification:
+# Ths skribble process will take in the skribble json specification and create a flattened image. The process MUST accept in the id of the skribble to process. The skribble process MUST complete the following validataion on the specification:
 
       # All assets requested to be included MUST exist in the media server
       # All assets requested MUST match the check field from the media service in the matching specification
@@ -8,13 +8,31 @@
 
 # The generated image MUST BE a png file that is web optimized. Once the image is generated, the image is then POSTed back to the api with the skribble id.
 
+# Data Format
+
+# When the __/a/:media_id endpoint is called, the data that is returned MUST be JSON encoded with the REQUIRED fields:
+
+# media_id REQUIRED The id of the media
+# check REQUIRED The MD5 Checksum of the asset that is used to verify the validaity of the asset
+# mime_type REQUIRED The MIME type of the asset.
+# type REQUIRED An enum of either:
+# Item: MUST BE png or gif
+# Background: MUST BE png or gif
+# Message: MUST BE png or
+# Sound: MUST BE mp3
+# Effect: MUST BE javascript file (will contain all CSS and Images needed for the effect to go off)
+# category OPTIONAL A custom category that this asset belongs too
+# order OPTIONAL ordering of the asset when displayed to a user. MUST BE a positive integer
+# can_overlap REQUIRED boolean diticating wether the asset can be overlapped on the skribble grid
+# src REQUIRED the FQDN URL to access the asset
+
 # Order of image manipulation
       # postion
       # scale
       # rotate
 
 from __future__ import print_function
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageOps
 import logging, urllib2, cStringIO, json, boto3, os, sys, uuid, hashlib, base64
 # PIL           Python Image Library
 # urllib2       open arbitrary resources from url
@@ -42,55 +60,74 @@ class Skribble:
     self.message_assets = self.skribble_json['rules']['messages']
     self.background = None
     self.layers = []
-    self.logs = []
     self.errors = []
 
 #########################
 # HELPER METHODS
 #########################
+  # logging
+  def logger (self, type, message):
+    print(message)
+    if type == 'info':
+      logger.info(message)
+    elif type == 'error':
+      self.errors.append(message)
+      logger.error(message)
 
   # validate url
-  def valid_url (self, url):
+  def valid_url (self, raw_asset):
+    self.logger('info', 'Validating url of {}...'.format(raw_asset['media_id']))
     try:
-      self.logs.append('Validated URL {}...'.format(url))
-      return urllib2.urlopen(urllib2.Request(url))
+      urllib2.urlopen(urllib2.Request(raw_asset['src']))
+      self.logger('info', 'Validated url of {}...'.format(raw_asset['media_id']))
+      return True
     except:
-      self.errors.append('Invalid URL {}...'.format(url))
+      self.logger('error', 'Invalid url for {}...'.format(raw_asset['media_id']))
+      raise Exception('Invalid url for {}...'.format(raw_asset['media_id']))
       return False
 
   # validate response is imgage/png
-  def valid_type (self, asset, response):
-    mime_type = asset['mime_type']
-    try:
-      self.logs.append('Validated type as {}...'.format(mime_type))
-      return response.info()['Content-type'] == mime_type
-    except:
-      self.errors.append('Invalid type, expected {}, instead saw {}...'.format(mime_type, response.info()['Content-type']))
+  def valid_type (self, raw_asset):
+    self.logger('info', 'Validating type of {}...'.format(raw_asset['media_id']))
+    mime_type = raw_asset['mime_type']
+    response = self.url_response(raw_asset)
+    if response.info()['Content-type'] == mime_type:
+      self.logger('info', 'Validated type of {}...'.format(raw_asset['media_id']))
+      return True
+    else:
+      self.logger('error', 'Invalid type for {}, expected {}, instead saw {}...'.format(raw_asset['media_id'], mime_type, response.info()['Content-type']))
+      raise Exception('Invalid type for {}, expected {}, instead saw {}...'.format(raw_asset['media_id'], mime_type, response.info()['Content-type']))
+      return False
+
 
   # verify assets by checksum type and value
-  def validate_checksum(self, asset, response):
+  def validate_checksum(self, raw_asset):
+    self.logger('info', 'Validating checksum of {}...'.format(raw_asset['media_id']))
     # verify check type
-    self.logs.append('Validating checksum of {}...'.format(asset['media_id'], asset['src']))
-    type_of_check = asset['check']['type']
-    value = asset['check']['value']
+    type_of_check = raw_asset['check']['type']
+    value = raw_asset['check']['value']
+    response = self.url_response(raw_asset)
     if type_of_check == 'sha1':
-      hash_value = hashlib.sha1(response).hexdigest()
+      self.logger('info', 'Validating checksum of {} using sha1...'.format(raw_asset['media_id']))
+      hash_value = hashlib.sha1(response.read()).hexdigest()
     elif type_of_check == 'md5':
-      hash_value = hashlib.md5(response).hexdigest()
+      self.logger('info', 'Validating checksum of {} using md5...'.format(raw_asset['media_id']))
+      hash_value = hashlib.md5(response.read()).hexdigest()
+
     if hash_value == value:
-      self.logs.append('{} passed checksum validation...'.format(asset['media_id']))
+      self.logger('info', 'Validated checksum of {}...'.format(raw_asset['media_id']))
+      return True
     else:
-      self.errors.append('{} failed checksum validation, expected checksum {}, instead saw {}...'.format(asset['media_id'], value, hash_value))
-    return hash_value == value
+      self.logger('error', '{} failed checksum validation, expected checksum {}, instead saw {}...'.format(raw_asset['media_id'], value, hash_value))
+      raise Exception('{} failed checksum validation, expected checksum {}, instead saw {}...'.format(raw_asset['media_id'], value, hash_value))
+      return False
 
   # retrieve content from url
-  def url_response (self, url):
-    self.logs.append('Fetching response for {}...'.format(url))
-    return urllib2.urlopen(url)
+  def url_response (self, raw_asset):
+    return urllib2.urlopen(raw_asset['src'])
 
   # create string buffer for reading and writing data
   def string_buffer (self, response):
-    self.logs.append('Creating buffer for response...')
     return cStringIO.StringIO(response.read())
 
   # load image from a file in this case from the string buffer
@@ -98,127 +135,143 @@ class Skribble:
     return Image.open(file).convert('RGBA')
 
   # open image (currently used for debugging)
-  def preview (self, asset):
-    asset.show()
+  def preview (self, rendered_asset):
+    rendered_asset.show()
 
   # get an assets top left coordinate
-  def get_anchor_coordinates (self, asset):
-    self.logs.append('Getting asset anchor points...')
-    x = asset['state']['left']
-    y = asset['state']['top']
+  def get_anchor_coordinates (self, raw_asset):
+    self.logger('info', 'Getting asset anchor points for {}...'.format(raw_asset['media_id']))
+    x = raw_asset['state']['left']
+    y = raw_asset['state']['top']
     return x,y
 
   # get an assets scale if any
-  def get_scale_value (self, asset):
-    self.logs.append('Getting asset scale value...')
-    return asset['state']['scale']
+  def get_scale_value (self, raw_asset):
+    self.logger('info', 'Getting scale value for {}...'.format(raw_asset['media_id']))
+    return raw_asset['state']['scale']
 
   # get an assets rotation if any
-  def get_rotation_value (self, asset):
-    self.logs.append('Getting asset rotation value...')
-    return asset['state']['rotation']
+  def get_rotation_value (self, raw_asset):
+    self.logger('info', 'Getting rotation value for {}...'.format(raw_asset['media_id']))
+    return raw_asset['state']['rotation']
 
   # calculate all corners after asset is scaled
-  def calculate_corners (self, resized_asset, n_coordinates):
-    self.logs.append('Calculating corners...')
-    corners = {}
-    # dimensions
-    w, h = resized_asset.size
-    corners['top_left'] = n_coordinates
-    corners['top_right'] = ((n_coordinates[0] + w), n_coordinates[1])
-    corners['bottom_right'] = ((n_coordinates[0] + w), (n_coordinates[1] + h))
-    corners['bottom_left'] = (n_coordinates[0], (n_coordinates[1] + h))
-    return corners
+  def calculate_corners (self, processed_asset):
+    self.logger('info', 'Calculating corners for {}...'.format(processed_asset['raw']['media_id']))
+    try:
+      corners = {}
+      # dimensions
+      w, h = processed_asset['resized_asset'].size
+      corners['top_left'] = processed_asset['n_coordinates']
+      corners['top_right'] = ((processed_asset['n_coordinates'][0] + w), processed_asset['n_coordinates'][1])
+      corners['bottom_right'] = ((processed_asset['n_coordinates'][0] + w), (processed_asset['n_coordinates'][1] + h))
+      corners['bottom_left'] = (processed_asset['n_coordinates'][0], (processed_asset['n_coordinates'][1] + h))
+      self.logger('info', 'Calculated corners for {}...'.format(processed_asset['raw']['media_id']))
+      return corners
+    except:
+      self.logger('error', 'Unable to calculate corners for {}...'.format(processed_asset['raw']['media_id']))
+      raise Exception('Unable to calculate corners for {}...'.format(processed_asset['raw']['media_id']))
 
   # # verify that non-overlapable assets don't collide
-  def collision_test (self, base, base_corners, items):
-    self.logs.append('Starting collision test...')
-    for item in items:
-      asset = self.validate_and_get_asset(item)
-      scale_value = self.get_scale_value(item)
-      resized_asset = self.resize(asset, scale_value)
-      coordinates = self.get_anchor_coordinates(item)
-      n_coordinates = self.recalculate_coordinates(asset, resized_asset, coordinates)
-      corners = self.calculate_corners(resized_asset, n_coordinates)
-      if item != base:
-        if (not base['can_overlap']) | (not item['can_overlap']):
-          if (corners['top_left'][0] > base_corners['top_left'][0]) | (base_corners['top_left'][0] > corners['top_left'][0]):
-            if (corners['top_left'][0] < base_corners['top_right'][0]) | (base_corners['top_left'][0] < corners['top_right'][0]):
-              if (corners['top_left'][1] > base_corners['top_left'][1]) | (base_corners['top_left'][1] > corners['top_left'][1]):
-                if (corners['top_left'][1] < base_corners['bottom_left'][1]) | (base_corners['top_left'][1] < corners['bottom_left'][1]):
-                  self.errors.append('Error, collision detected: {}...'.format(base['src']))
-      self.logs.append('No collisions detected: asset {}...'.format(base['src']))
+  def collision_detected (self, processed_base_asset, processed_assets):
+    base_corners = processed_base_asset['corners']
+    self.logger('info', 'Starting collision tests...')
+    for asset in processed_assets:
+      asset_corners = asset['corners']
+      if processed_base_asset['raw'] != asset['raw']:
+        if (not processed_base_asset['raw']['can_overlap']) | (not asset['raw']['can_overlap']):
+          if (base_corners['top_left'][0] >= asset_corners['top_left'][0]) | (asset_corners['top_left'][0] >= base_corners['top_left'][0]):
+            if (base_corners['top_left'][0] <= asset_corners['top_right'][0]) | (asset_corners['top_left'][0] <= base_corners['top_right'][0]):
+              if (base_corners['top_left'][1] >= asset_corners['top_left'][1]) | (asset_corners['top_left'][1] >= base_corners['top_left'][1]):
+                if (base_corners['top_left'][1] <= asset_corners['bottom_left'][1]) | (asset_corners['top_left'][1] <= base_corners['bottom_left'][1]):
+                  self.logger('error', 'Error, collision detected between {} and {}...'.format(base['raw']['media_id'], asset['raw']['media_id']))
+                  raise Exception('Error, collision detected between {} and {}...'.format(base['raw']['media_id'], asset['raw']['media_id']))
+                  return True
 
   # validate an assets url and type
-  def validate_and_get_asset (self, asset):
-    url = asset['src']
-    self.logs.append('Validating {}...'.format(url))
-    if self.valid_url(url):
-      response = self.url_response(url)
-      if self.valid_type(asset, response):
-        file = self.string_buffer(response)
-        if self.validate_checksum(asset, response):
-          self.logs.append('Validated {}...'.format(url))
-          return self.image(file)
-        else:
-          self.errors.append('Error, invalid checksum for {}...'.format(url))
-      else:
-        self.errors.append('Error, invalid type for {}...'.format(url))
-    else:
-      self.errors.append('Error, invalid url for {}...'.format(url))
+  def validate_and_get_asset (self, raw_asset):
+    try:
+      self.logger('info', 'Validating {}...'.format(raw_asset['media_id']))
+      self.valid_url(raw_asset)
+      self.valid_type(raw_asset)
+      self.validate_checksum(raw_asset)
+      self.logger('info', 'Validated url, type, and checksum of {}...'.format(raw_asset['media_id']))
+    except:
+      raise
+
+    try:
+      response = self.url_response(raw_asset)
+      file = self.string_buffer(response)
+      self.logger('info', 'Fetching image for {}...'.format(raw_asset['media_id']))
+      return self.image(file)
+    except:
+      self.logger('error', 'Unable to retrieve asset for {}...'.format(raw_asset['media_id']))
+      raise Exception('Unable to retrieve asset for {}...'.format(raw_asset['media_id']))
 
   # recalculate new coordinates after asset is scaled
-  def recalculate_coordinates (self, asset, resized_asset, coordinates):
-    self.logs.append('Recalculating coordinates...')
-    # original dimensions
-    o_width, o_height = asset.size
-    # resized dimensions
-    r_width, r_height = resized_asset.size
-    # if asset has shrunk
-    if (o_width > r_width) & (o_height > r_height):
-    # dimension differences to calculate new coordinates
-      width_difference = o_width - r_width
-      height_difference = o_height - r_height
-      # set new coordinates for x & y
-      nx = (coordinates[0] + (width_difference / 2))
-      ny = (coordinates[1] + (height_difference / 2))
-    # if asset has expanded
-    elif (o_width < r_width) & (o_height < r_height):
-      # dimension differences to calculate new coordinates
-      width_difference = r_width - o_width
-      height_difference = r_height - o_height
-      # set new coordinates for x & y
-      nx = (coordinates[0] - (width_difference / 2))
-      ny = (coordinates[1] - (width_difference / 2))
-    return (nx,ny)
+  def recalculate_coordinates (self, processed_asset):
+    self.logger('info', 'Recalculating coordinates for {}...'.format(processed_asset['raw']['media_id']))
+    try:
+      # original dimensions
+      o_width, o_height = processed_asset['asset'].size
+      # resized dimensions
+      r_width, r_height = processed_asset['resized_asset'].size
+      # if asset has shrunk
+      if (o_width > r_width) & (o_height > r_height):
+        # dimension differences to calculate new coordinates
+        width_difference = o_width - r_width
+        height_difference = o_height - r_height
+        # set new coordinates for x & y
+        nx = (processed_asset['coordinates'][0] + (width_difference / 2))
+        ny = (processed_asset['coordinates'][1] + (height_difference / 2))
+      # if asset has expanded
+      elif (o_width < r_width) & (o_height < r_height):
+        # dimension differences to calculate new coordinates
+        width_difference = r_width - o_width
+        height_difference = r_height - o_height
+        # set new coordinates for x & y
+        nx = (processed_asset['coordinates'][0] - (width_difference / 2))
+        ny = (processed_asset['coordinates'][1] - (width_difference / 2))
+      self.logger('info', 'Recalculated coordinates for {}...'.format(processed_asset['raw']['media_id']))
+      return (nx,ny)
+    except:
+      self.logger('error', 'Unable to recalculate coordinates for {}...'.format(processed_asset['raw']['media_id']))
+      raise Exception('Unable to recalculate coordinates for {}...'.format(processed_asset['raw']['media_id']))
 
-  def get_rotation_pivot (self, asset, scale, coordinates):
-    self.logs.append('Calculating rotation pivot...')
-    # resize asset to determin new size
-    resized_asset = self. resize(asset, scale)
-    # calculate coordinates for resized asset
-    n_coordinates = self.recalculate_coordinates(asset, resized_asset, coordinates)
-    # calculate x coordinate of center
-    center_x = n_coordinates[0] + (resized_asset.size[0] / 2)
-    # calculate y coordinate of center
-    center_y = n_coordinates[1] + (resized_asset.size[1] / 2)
-    return center_x, center_y
+  def get_rotation_pivot (self, processed_asset):
+    self.logger('info', 'Calculating rotation pivot for...'.format(processed_asset['raw']['media_id']))
+    try:
+      # calculate x coordinate of center
+      center_x = processed_asset['n_coordinates'][0] + (processed_asset['resized_asset'].size[0] / 2)
+      # calculate y coordinate of center
+      center_y = processed_asset['n_coordinates'][1] + (processed_asset['resized_asset'].size[1] / 2)
+      self.logger('info', 'Calculated rotation pivot for...'.format(processed_asset['raw']['media_id']))
+      return center_x, center_y
+    except:
+      self.logger('error', 'Unable to calculate rotation pivot for {}...'.format(processed_asset['raw']['media_id']))
+      raise Exception('Unable to calculate rotation pivot for {}...'.format(processed_asset['raw']['media_id']))
 
-  def upload_skribble (self, rendered_skribble, post_path):
-    encoded_image = base64.b64encode(rendered_skribble.read())
-    # Build the request
-    request = urllib2.Request(post_path)
-    request.add_header('Content-type', 'application/json')
-    body = {
-      'skribble_id': self.skribble_json['skribble_id'],
-      'skribble': encoded_image
-    }
-    request.add_data(body)
-    # outgoing data
-    self.logs.append('Outgoing api data {}...'.format(request.get_data()))
-    # server response
-    self.logs.append('Submitting Skribble to API...')
-    self.logs.append(urllib2.urlopen(request).read())
+  def upload_skribble (self, rendered_asset, post_path):
+    self.logger('info', 'Starting Skribble upload for {}...'.format(self.skribble_json['skribble_id']))
+    try:
+      encoded_image = base64.b64encode(rendered_asset.read())
+      # Build the request
+      request = urllib2.Request(post_path)
+      request.add_header('Content-type', 'application/json')
+      body = {
+        'skribble_id': self.skribble_json['skribble_id'],
+        'skribble': encoded_image
+      }
+      request.add_data(body)
+      # outgoing data
+      self.logger('info', 'Outgoing api data {}...'.format(request.get_data()))
+      # server response
+      self.logger('info', 'Submitting Skribble to API...')
+      self.logger('info', urllib2.urlopen(request).read())
+      self.logger('info', 'Successfully submitted Skribble {}...'.format(self.skribble_json['skribble_id']))
+    except:
+      self.logger('error', 'Unable to upload Skribble {}...'.format(self.skribble_json['skribble_id']))
+      raise Exception('Unable to upload Skribble {}...'.format(self.skribble_json['skribble_id']))
 
 #########################
 # TRANSFORM METHODS
@@ -231,225 +284,300 @@ class Skribble:
     return base
 
   # resize an asset
-  def resize (self, asset, scale):
-    self.logs.append('Resizing asset...')
-    # original width & height of asset
-    o_width = round((asset.size[0]), 14)
-    o_height = round((asset.size[1]), 14)
-    # resized width & height
-    r_width = int(o_width * scale)
-    r_height = int(o_height * scale)
-    # resized asset
-    return asset.resize((r_width, r_height), Image.ANTIALIAS)
+  def resize (self, processed_asset):
+    self.logger('info', 'Resizing asset {}...'.format(processed_asset['raw']['media_id']))
+    try:
+      # original width & height of asset
+      o_width = round((processed_asset['asset'].size[0]), 14)
+      o_height = round((processed_asset['asset'].size[1]), 14)
+      # resized width & height
+      r_width = int(o_width * processed_asset['scale_value'])
+      r_height = int(o_height * processed_asset['scale_value'])
+      # resized asset
+      self.logger('info', 'Resized asset {}...'.format(processed_asset['raw']['media_id']))
+      return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
+    except:
+      raise Exception('Unable to resize asset {}...'.format(processed_asset['raw']['media_id']))
 
- # center asset for rotation
-  def center (self, base, asset):
-    # # dimensions for base
-    base_width, base_height = base.size
-    # # center of base
-    center_x = base_width / 2
-    center_y = base_height / 2
-    # dimensions for asset
-    asset_width, asset_height = asset.size
-    x = center_x - (asset_width / 2)
-    y = center_y - (asset_height / 2)
-    return self.paste(base, asset, (x,y))
+  # center asset for rotation
+  def center (self, base, processed_asset):
+    self.logger('info', 'Centering asset {}...'.format(processed_asset['raw']['media_id']))
+    try:
+      # dimensions for base
+      base_width, base_height = base.size
+      # center of base
+      center_x = base_width / 2
+      center_y = base_height / 2
+      # dimensions for asset
+      asset_width, asset_height = processed_asset['resized_asset'].size
+      x = center_x - (asset_width / 2)
+      y = center_y - (asset_height / 2)
+      self.logger('info', 'Centered asset {}...'.format(processed_asset['raw']['media_id']))
+      return self.paste(base, processed_asset['resized_asset'], (x,y))
+    except:
+      self.logger('error', 'Unable to center asset {}...'.format(processed_asset['raw']['media_id']))
+      raise Exception('Unable to center asset {}...'.format(processed_asset['raw']['media_id']))
 
   # crop asset from its center
-  def crop_from_center (self, asset, proposed_size):
-    # img size
-    width, height = asset.size
-    # proposed dimensions
-    proposed_width = proposed_size[0]
-    proposed_height = proposed_size[1]
-    # coordinates for 4-tuple
-    left = (width - proposed_width) / 2
-    top = (height - proposed_height) / 2
-    right = proposed_width + left
-    bottom = proposed_height + top
-    # crop asset from center
-    return asset.crop((left, top, right, bottom))
+  def crop_from_center (self, processed_asset, proposed_size):
+    self.logger('info', 'Cropping asset {} from center...'.format(processed_asset['raw']['media_id']))
+    try:
+      # img size
+      width, height = processed_asset['asset'].size
+      # proposed dimensions
+      proposed_width, proposed_height = proposed_size
+      # coordinates for 4-tuple
+      left = (width - proposed_width) / 2
+      top = (height - proposed_height) / 2
+      right = proposed_width + left
+      bottom = proposed_height + top
+      # crop asset from center
+      self.logger('info', 'Cropped asset {} from center...'.format(processed_asset['raw']['media_id']))
+      return processed_asset['asset'].crop((left, top, right, bottom))
+    except:
+      self.logger('error', 'Unable to crop asset {} from center...'.format(processed_asset['raw']['media_id']))
+      raise Exception('Unable to crop asset {} from center...'.format(processed_asset['raw']['media_id']))
 
   # resize asset to fit within proposed size
-  def resize_from_center(self, asset, proposed_size):
-    # asset dimensions
-    width, height = asset.size
-    # proposed dimensions
-    proposed_width = proposed_size[0]
-    proposed_height = proposed_size[1]
-    # calculate whether to scale to proposed width or proposed height
-    width_difference = proposed_width - width
-    height_difference = proposed_height - height
-    # if width requires scaling priority scale by proposed width
-    if width_difference > height_difference:
-      r_width = proposed_width
-      r_height = int((height * proposed_width) / width)
-      return asset.resize((r_width, r_height), Image.ANTIALIAS)
-      # else scale by proposed height
-    else:
-      r_height = proposed_height
-      r_width = int((width * proposed_height) / height)
-      return asset.resize((r_width, r_height), Image.ANTIALIAS)
+  def resize_from_center(self, processed_asset, proposed_size):
+    self.logger('info', 'Resizing asset {} from center...'.format(processed_asset['raw']['media_id']))
+    try:
+      # asset dimensions
+      width, height = processed_asset['asset'].size
+      # proposed dimensions
+      proposed_width, proposed_height = proposed_size
+      # calculate whether to scale to proposed width or proposed height
+      width_difference = proposed_width - width
+      height_difference = proposed_height - height
+      # if width requires scaling priority scale by proposed width
+      self.logger('info', 'Resized asset {} from center...'.format(processed_asset['raw']['media_id']))
+      if width_difference > height_difference:
+        r_width = proposed_width
+        r_height = int((height * proposed_width) / width)
+        return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
+        # else scale by proposed height
+      else:
+        r_height = proposed_height
+        r_width = int((width * proposed_height) / height)
+        return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
+    except:
+      self.logger('error', 'Unable to resize asset {} from center...'.format(processed_asset['raw']['media_id']))
+      raise Exception('Unable to resize asset {} from center...'.format(processed_asset['raw']['media_id']))
 
   # format background
-  def transform_background(self, base, asset):
-    self.logs.append('Formatting background asset...')
-    # if sizes are equal do nothing
-    if base.size == asset.size:
-      return asset
-    # else check if layer needs to be resized
-    else:
-      base_width, base_height = base.size
-      asset_width, asset_height = asset.size
-      # if either the width or height of the layer are smaller then the width or height of the base resize the layer to cover the base area
-      if asset_width < base_width | asset_height < base_height:
-        # resize the layer
-        return self.resize_from_center(asset, base.size)
-      # crop the oversized layer from center to fit exactly within the base area
-      return self.crop_from_center(asset, base.size)
+  def transform_background(self, base, processed_asset):
+    try:
+      self.logger('info', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+      # if sizes are equal do nothing
+      if base.size == processed_asset['asset'].size:
+        return processed_asset['asset']
+      # else check if layer needs to be resized
+      else:
+        base_width, base_height = base.size
+        asset_width, asset_height = processed_asset['asset'].size
+        # if either the width or height of the layer are smaller then the width or height of the base resize the layer to cover the base area
+        if asset_width < base_width | asset_height < base_height:
+          # resize the layer
+          self.logger('info', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+          return self.resize_from_center(processed_asset, base.size)
+        # crop the oversized layer from center to fit exactly within the base area
+        self.logger('info', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+        return self.crop_from_center(processed_asset, base.size)
+    except:
+      self.logger('error', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+      raise
 
-  def position_scale_rotate(self, asset, resized_asset, scale, coordinates, angle):
-    self.logs.append('Positioning asset...')
-    self.logs.append('Scaling asset...')
-    self.logs.append('Rotating asset...')
-    base = self.render_canvas()
-    # calculate new coordinates for resized asset
-    n_coordinates = self.recalculate_coordinates(asset, resized_asset, coordinates)
-    # # get pivot point
-    pivot = self.get_rotation_pivot(asset, scale, coordinates)
-    # # dimensions for base
-    base_width, base_height = base.size
-    # # dimensions for asset
-    asset_width, asset_height = resized_asset.size
-    # # point of pivot (asset centerpoint)
-    pivot_x, pivot_y = pivot
-    # # center of base
-    center_x = base_width / 2
-    center_y = base_height / 2
-    # dimensions for asset
-    asset_width, asset_height = resized_asset.size
-    x = center_x - (asset_width / 2)
-    y = center_y - (asset_height / 2)
-    # determine offset to reposition centered image after rotation
-    x_shift = n_coordinates[0] - x
-    y_shift = n_coordinates[1] - y
-    # center image
-    centered = self.center(base, resized_asset)
-    # rotate image
-    rotated = centered.rotate(-angle)
-    # reposition image using offset
-    return ImageChops.offset(rotated, int(x_shift), int(y_shift))
+  def position_scale_rotate(self, processed_asset):
+    self.logger('info', 'Positioning asset {}...'.format(processed_asset['raw']['media_id']))
+    self.logger('info', 'Scaling asset {}...'.format(processed_asset['raw']['media_id']))
+    self.logger('info', 'Rotating asset {}...'.format(processed_asset['raw']['media_id']))
+    try:
+      base = self.render_canvas()
+      # # dimensions for base
+      base_width, base_height = base.size
+      # # dimensions for asset
+      asset_width, asset_height = processed_asset['resized_asset'].size
+      # # point of pivot (asset centerpoint)
+      pivot_x, pivot_y = processed_asset['pivot']
+      # # center of base
+      center_x = base_width / 2
+      center_y = base_height / 2
+      # dimensions for asset
+      x = center_x - (asset_width / 2)
+      y = center_y - (asset_height / 2)
+      # determine offset to reposition centered image after rotation
+      x_shift = processed_asset['n_coordinates'][0] - x
+      y_shift = processed_asset['n_coordinates'][1] - y
+      # calculate padding for canvas
+      x_padding = abs(x_shift)
+      y_padding = abs(y_shift)
+      # center image
+      centered = self.center(base, processed_asset)
+      # pad image
+      padded = ImageOps.expand(centered, border=(int(x_padding), int(y_padding)))
+      # rotate image
+      rotated = padded.rotate(-processed_asset['rotation_value'])
+      # reposition image using offset and reset asset in dictionary
+      processed_asset['asset'] = ImageChops.offset(rotated, int(x_shift), int(y_shift))
+      # crop bleed from offset
+      cropped_asset = self.crop_from_center(processed_asset, base.size)
+      self.logger('info', 'Positioned asset {}...'.format(processed_asset['raw']['media_id']))
+      self.logger('info', 'Scaled asset {}...'.format(processed_asset['raw']['media_id']))
+      self.logger('info', 'Rotated asset {}...'.format(processed_asset['raw']['media_id']))
+      return cropped_asset
+    except:
+      self.logger('error', 'Unable to Position asset {}...'.format(processed_asset['raw']['media_id']))
+      self.logger('error', 'Unable to Scale asset {}...'.format(processed_asset['raw']['media_id']))
+      self.logger('error', 'Unable to Rotate asset {}...'.format(processed_asset['raw']['media_id']))
+      raise
 
 #########################
 # PREFLIGHT METHODS
 #########################
 
   # check background to see if cropping or resizing is required
-  def preflight_background (self, base, item):
-    self.logs.append('Performing background preflight...')
+  def preflight_background (self, base, raw_asset):
+    self.logger('info', 'PREFLIGHT - BACKGROUND')
+    self.logger('info', 'Performing background preflight...')
     # validate url, type, and generate asset
     try:
-      asset = self.validate_and_get_asset(item)
-      transformed = self.transform_background(base, asset)
-      self.background = transformed
-      self.logs.append('Background passed preflight...')
+      processed_asset = {}
+      processed_asset['raw'] = raw_asset
+      processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
+      self.background = self.transform_background(base, processed_asset)
+      self.logger('info', 'Background {} passed preflight...'.format(processed_asset['raw']['media_id']))
     except:
-      self.errors.append('Background failed preflight, verify source URL and image type.')
+      self.logger('error', 'Background {} failed preflight, verify source URL and image type.'.format(processed_asset['raw']['media_id']))
+      raise
 
   # check items and perform necessary manipulations
   def preflight_items (self, items):
-    self.logs.append('Performing items preflight...')
+    self.logger('info', 'PREFLIGHT - ITEMS')
+    self.logger('info', 'Performing items preflight...')
+    # store validated assets
+    assets = []
     # iterate through items list
     for item in items:
       try:
+        # create a new dictionary to store values
+        processed_asset = {}
+        # store reference to original item
+        processed_asset['raw'] = item
         # validate url, type, and generate asset
-        asset = self.validate_and_get_asset(item)
-        # get scale value
-        scale_value = self.get_scale_value(item)
-        # get rotation value
-        rotation_value = self.get_rotation_value(item)
-        # resize asset
-        resized_asset = self.resize(asset, scale_value)
-        # get coordinates
-        coordinates = self.get_anchor_coordinates(item)
-        # new coordinates after resize
-        n_coordinates = self.recalculate_coordinates(asset, resized_asset, coordinates)
-        # calculate corners
-        corners = self.calculate_corners(resized_asset, n_coordinates)
-        # run collision test
-        self.collision_test(item, corners, items)
-        # position scale and rotate asset
-        transformed = self.position_scale_rotate(asset, resized_asset, scale_value, coordinates, rotation_value)
-        # append transformed layer to layers list
-        self.layers.append(transformed)
-        self.logs.append('{} passed preflight...'.format(item['media_id']))
+        processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
+        # # get scale value
+        processed_asset['scale_value'] = self.get_scale_value(processed_asset['raw'])
+        # # get rotation value
+        processed_asset['rotation_value'] = self.get_rotation_value(processed_asset['raw'])
+        # # resize asset
+        processed_asset['resized_asset'] = self.resize(processed_asset)
+        # # get coordinates
+        processed_asset['coordinates'] = self.get_anchor_coordinates(processed_asset['raw'])
+        # # new coordinates after resize
+        processed_asset['n_coordinates'] = self.recalculate_coordinates(processed_asset)
+        # # calculate corners
+        processed_asset['corners'] = self.calculate_corners(processed_asset)
+        # # calculate pivote for rotation
+        processed_asset['pivot'] = self.get_rotation_pivot(processed_asset)
+        assets.append(processed_asset)
       except:
-        self.errors.append('{} failed preflight...'.format(item['media_id']))
+        self.logger('error', '{} failed preflight...'.format(processed_asset['raw']['media_id']))
+
+    for asset in assets:
+      # run collision test
+      if self.collision_detected(asset, assets):
+        self.logger('error', '{} failed preflight...'.format(asset['raw']['media_id']))
+      else:
+        # position scale and rotate asset
+        transformed = self.position_scale_rotate(asset)
+        # insert 0, transformed layer to layers list
+        self.layers.insert(0, transformed)
+        self.logger('info', '{} passed preflight...'.format(asset['raw']['media_id']))
 
   # check messages and perform necessary manipulations
   def preflight_messages (self, messages):
-    self.logs.append('Performing messages preflight...')
+    self.logger('info', 'PREFLIGHT - MESSAGES')
+    self.logger('info', 'Performing messages preflight...')
+    # store validated assets
+    assets = []
     # # iterate through messages list
     for message in messages:
       try:
+        # create a new dictionary to store values
+        processed_asset = {}
+        # store reference to original item
+        processed_asset['raw'] = message
         # validate url, type, and generate asset
-        asset = self.validate_and_get_asset(message)
+        processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
         # get scale value
-        scale_value = self.get_scale_value(message)
+        processed_asset['scale_value'] = self.get_scale_value(processed_asset['raw'])
         # get rotation value
-        rotation_value = self.get_rotation_value(message)
+        processed_asset['rotation_value'] = self.get_rotation_value(processed_asset['raw'])
         # resize asset
-        resized_asset = self.resize(asset, scale_value)
+        processed_asset['resized_asset'] = self.resize(processed_asset)
         # if a message passes validation
-        coordinates = self.get_anchor_coordinates(message)
+        processed_asset['coordinates'] = self.get_anchor_coordinates(processed_asset['raw'])
         # new coordinates after resize
-        n_coordinates = self.recalculate_coordinates(asset, resized_asset, coordinates)
+        processed_asset['n_coordinates'] = self.recalculate_coordinates(processed_asset)
         # calculate corners
-        corners = self.calculate_corners(resized_asset, n_coordinates)
-        # run collision test
-        self.collision_test(message, corners, messages)
-        # position scale and rotate asset
-        transformed = self.position_scale_rotate(asset, resized_asset, scale_value, coordinates, rotation_value)
-        # append transformed layer to layers list
-        self.layers.append(transformed)
-        self.logs.append('{} passed preflight...'.format(message['media_id']))
+        processed_asset['corners'] = self.calculate_corners(processed_asset)
+        # calculate pivote for rotation
+        processed_asset['pivot'] = self.get_rotation_pivot(processed_asset)
+        assets.append(processed_asset)
       except:
-        self.errors.append('{} failed preflight...'.format(message['media_id']))
+        self.logger('error', '{} failed preflight...'.format(processed_asset['raw']['media_id']))
+
+    for asset in assets:
+      # run collision test
+      if self.collision_detected(asset, assets):
+        self.logger('error', '{} failed preflight...'.format(asset['raw']['media_id']))
+      else:
+        # position scale and rotate asset
+        transformed = self.position_scale_rotate(asset)
+        # insert 0, transformed layer to layers list
+        self.layers.insert(0, transformed)
+        self.logger('info', '{} passed preflight...'.format(asset['raw']['media_id']))
 
 #########################
 # RENDER METHODS
 #########################
 
   # base canvas
-  def render_canvas(self):
+  def render_canvas(self, size=(1280, 720)):
     # create new image instance width default canvas size and no fill
-    canvas = Image.new('RGBA', (1280, 720), None)
+    self.logger('info', 'Generating canvas...')
+    canvas = Image.new('RGBA', size, None)
     return canvas
     # image instance returned not original
 
   # render skribble
   def render(self):
     canvas = self.render_canvas()
+    self.logger('info', 'PREFLIGHT')
     self.preflight_background(canvas, self.background_asset)
     self.preflight_items(self.item_assets)
     self.preflight_messages(self.message_assets)
-
-    logs = set(self.logs)
-    for log in logs:
-      logger.info(log)
-      # print(log)
+    self.logger('info', 'PREFLIGHT COMPLETE')
+    self.logger('info', '{} errors...'.format(len(self.errors)))
 
     if len(self.errors) > 0:
-      errors = set(self.errors)
-      for error in errors:
-        logger.error(error)
-        # print(error)
+      self.logger('info', 'ERRORS:')
+      for error in self.errors:
+        self.logger('error', error)
     else:
+      self.logger('info', 'RENDERING SKRIBBLE...')
+      self.logger('info', '...')
+      self.logger('info', '.........')
+      self.logger('info', '...............')
+      self.logger('info', '.....................')
       canvas = Image.alpha_composite(canvas, self.background)
+
       for layer in self.layers:
         canvas = Image.alpha_composite(canvas, layer)
+
       string_buffer = cStringIO.StringIO()
       canvas.save(string_buffer, 'PNG')
+      self.preview(canvas)
       return string_buffer
 
 
@@ -472,3 +600,11 @@ def handler(event, context):
   # upload in memory buffer to bucket
   if render:
     s3.Bucket('temp-lamda').put_object(Key=key, Body=render.getvalue())
+
+data = {
+   "skribble_id": "82dd5620-df30-11e5-a52e-0800274f2cef",
+   "skribble_url": "http://mockbin.com/bin/7a4dfb9f-6796-4521-83c9-27dbc98d5100",
+   "post_back": "https://api-local.changemyworldnow.com/skribble/82dd5620-df30-11e5-a52e-0800274f2cef/image?a=BJEOJsdvioq:sad;er"
+}
+test = Skribble(data)
+test.render()
