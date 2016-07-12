@@ -491,7 +491,7 @@ class Skribble:
         # position scale and rotate asset
         transformed = self.position_scale_rotate(asset)
         # insert 0, transformed layer to layers list
-        self.layers.insert(0, transformed)
+        self.layers.append(transformed)
         self.logger('info', '{} passed preflight...'.format(asset['raw']['media_id']))
 
   # check messages and perform necessary manipulations
@@ -535,7 +535,7 @@ class Skribble:
         # position scale and rotate asset
         transformed = self.position_scale_rotate(asset)
         # insert 0, transformed layer to layers list
-        self.layers.insert(0, transformed)
+        self.layers.append(transformed)
         self.logger('info', '{} passed preflight...'.format(asset['raw']['media_id']))
 
 #########################
