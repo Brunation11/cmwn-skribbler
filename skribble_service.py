@@ -253,46 +253,56 @@ class Skribble:
         # set new coordinates for x & y
         nx = (processed_asset['coordinates'][0] - (width_difference / 2))
         ny = (processed_asset['coordinates'][1] - (width_difference / 2))
-      self.logger('info', 'Recalculated coordinates for {}...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Recalculated coordinates for {}...'.format(processed_asset['raw']['media_id']))
       return (nx,ny)
     except:
-      self.logger('error', 'Unable to recalculate coordinates for {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to recalculate coordinates for {}...'.format(processed_asset['raw']['media_id']))
       raise Exception('Unable to recalculate coordinates for {}...'.format(processed_asset['raw']['media_id']))
 
   def get_rotation_pivot (self, processed_asset):
-    self.logger('info', 'Calculating rotation pivot for...'.format(processed_asset['raw']['media_id']))
+    logger.info('Calculating rotation pivot for {}...'.format(processed_asset['raw']['media_id']))
     try:
       # calculate x coordinate of center
       center_x = processed_asset['n_coordinates'][0] + (processed_asset['resized_asset'].size[0] / 2)
       # calculate y coordinate of center
       center_y = processed_asset['n_coordinates'][1] + (processed_asset['resized_asset'].size[1] / 2)
-      self.logger('info', 'Calculated rotation pivot for...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Calculated rotation pivot for {}...'.format(processed_asset['raw']['media_id']))
       return center_x, center_y
     except:
-      self.logger('error', 'Unable to calculate rotation pivot for {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to calculate rotation pivot for {}...'.format(processed_asset['raw']['media_id']))
       raise Exception('Unable to calculate rotation pivot for {}...'.format(processed_asset['raw']['media_id']))
 
-  def upload_skribble (self, rendered_asset, post_path):
-    self.logger('info', 'Starting Skribble upload for {}...'.format(self.skribble_json['skribble_id']))
+  def upload_skribble_to_s3 (self, rendered_asset):
+    logger.info('Uploading to S3...')
     try:
-      encoded_image = base64.b64encode(rendered_asset.read())
+      # create a key (file name) based on skribble id
+      key = '{}'.format(event['skribble_id'])
+      # connect to s3
+      s3 = boto3.resource('s3')
+      # upload in memory buffer to bucket
+      s3.Bucket('temp-lamda').put_object(Key=key, Body=rendered_asset.getvalue())
+    except Exception as error:
+      logger.error('Error uploading to S3 {}...'.format(error))
+      raise
+
+  def report_to_api (self, status):
+    logger.info('Starting Skribble upload for {}...'.format(self.skribble_json['skribble_id']))
+    logger.debug('Status is {}...'.format(status))
+    try:
       # Build the request
-      request = urllib2.Request(post_path)
-      request.add_header('Content-type', 'application/json')
-      body = {
-        'skribble_id': self.skribble_json['skribble_id'],
-        'skribble': encoded_image
-      }
-      request.add_data(body)
-      # outgoing data
-      self.logger('info', 'Outgoing api data {}...'.format(request.get_data()))
+      headers = {'Content-Type': 'application/json'}
+      data = {'status': status}
+      logger.debug('Submitting to {} with data {} and headers {}...'.format(self.post_back, data, headers))
+      response = requests.post(self.post_back, data=data, headers=headers)
       # server response
-      self.logger('info', 'Submitting Skribble to API...')
-      self.logger('info', urllib2.urlopen(request).read())
-      self.logger('info', 'Successfully submitted Skribble {}...'.format(self.skribble_json['skribble_id']))
+      logger.debug('Response code is {}...'.format(response.status_code))
+      if response.status_code != 201:
+        logger.debug(response.content)
+        raise Exception('Unexpected response code from API, expected 201, saw {}...'.format(response.status_code))
+      logger.info('Successfully submitted status {}...'.format(self.skribble_json['skribble_id']))
     except:
-      self.logger('error', 'Unable to upload Skribble {}...'.format(self.skribble_json['skribble_id']))
-      raise Exception('Unable to upload Skribble {}...'.format(self.skribble_json['skribble_id']))
+      logger.error('Unable to upload Skribble {}...'.format(self.skribble_json['skribble_id']))
+      raise
 
 #########################
 # TRANSFORM METHODS
