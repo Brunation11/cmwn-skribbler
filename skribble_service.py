@@ -33,9 +33,9 @@
 
 from __future__ import print_function
 from PIL import Image, ImageChops, ImageOps
-import logging, urllib2, cStringIO, json, boto3, os, sys, uuid, hashlib, base64
+import logging, requests, cStringIO, json, boto3, os, sys, uuid, hashlib, base64 #rollbar
 # PIL           Python Image Library
-# urllib2       open arbitrary resources from url
+# requests       open arbitrary resources from url
 # cstringIO     create string buffer (used to open virtual image from url)
 # json          pretty print json
 # boto3         aws client
