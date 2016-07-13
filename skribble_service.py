@@ -536,132 +536,86 @@ class Skribble:
         processed_asset['corners'] = self.calculate_corners(processed_asset)
         # # calculate pivote for rotation
         processed_asset['pivot'] = self.get_rotation_pivot(processed_asset)
-        assets.append(processed_asset)
-      except:
-        self.logger('error', '{} failed preflight...'.format(processed_asset['raw']['media_id']))
+        processed_assets.append(processed_asset)
+        logger.debug('Asset {} passed preprocessing...'.format(asset['media_id']))
+      except Exception as error:
+        logger.error('{} failed preflight and raised exception...'.format(error))
+        raise
 
-    for asset in assets:
+    for asset in processed_assets:
       # run collision test
-      if self.collision_detected(asset, assets):
-        self.logger('error', '{} failed preflight...'.format(asset['raw']['media_id']))
-      else:
-        # position scale and rotate asset
-        transformed = self.position_scale_rotate(asset)
-        # insert 0, transformed layer to layers list
-        self.layers.append(transformed)
-        self.logger('info', '{} passed preflight...'.format(asset['raw']['media_id']))
+      # self.collision_detected(asset, processed_assets)
+      # position scale and rotate asset
+      transformed = self.position_scale_rotate(asset)
+      # insert 0, transformed layer to layers list
+      self.layers.append(transformed)
+      logger.info('{} completed preflight...'.format(asset['raw']['media_id']))
+    logger.info('Completed all preflights...')
+
+  # check items and perform necessary manipulations
+  def preflight_items (self, items):
+    logger.info('PREFLIGHT - ITEMS')
+    logger.debug('Performing items preflight...')
+    self.preflight(items)
 
   # check messages and perform necessary manipulations
   def preflight_messages (self, messages):
-    self.logger('info', 'PREFLIGHT - MESSAGES')
-    self.logger('info', 'Performing messages preflight...')
-    # store validated assets
-    assets = []
-    # # iterate through messages list
-    for message in messages:
-      try:
-        # create a new dictionary to store values
-        processed_asset = {}
-        # store reference to original item
-        processed_asset['raw'] = message
-        # validate url, type, and generate asset
-        processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
-        # get scale value
-        processed_asset['scale_value'] = self.get_scale_value(processed_asset['raw'])
-        # get rotation value
-        processed_asset['rotation_value'] = self.get_rotation_value(processed_asset['raw'])
-        # resize asset
-        processed_asset['resized_asset'] = self.resize(processed_asset)
-        # if a message passes validation
-        processed_asset['coordinates'] = self.get_anchor_coordinates(processed_asset['raw'])
-        # new coordinates after resize
-        processed_asset['n_coordinates'] = self.recalculate_coordinates(processed_asset)
-        # calculate corners
-        processed_asset['corners'] = self.calculate_corners(processed_asset)
-        # calculate pivote for rotation
-        processed_asset['pivot'] = self.get_rotation_pivot(processed_asset)
-        assets.append(processed_asset)
-      except:
-        self.logger('error', '{} failed preflight...'.format(processed_asset['raw']['media_id']))
-
-    for asset in assets:
-      # run collision test
-      if self.collision_detected(asset, assets):
-        self.logger('error', '{} failed preflight...'.format(asset['raw']['media_id']))
-      else:
-        # position scale and rotate asset
-        transformed = self.position_scale_rotate(asset)
-        # insert 0, transformed layer to layers list
-        self.layers.append(transformed)
-        self.logger('info', '{} passed preflight...'.format(asset['raw']['media_id']))
+    logger.info('PREFLIGHT - MESSAGES')
+    logger.debug('Performing messages preflight...')
+    self.preflight(messages)
 
 #########################
 # RENDER METHODS
 #########################
 
   # base canvas
-  def render_canvas(self, size=(1280, 720)):
+  def render_canvas(self, size=(1280, 720), color=None):
     # create new image instance width default canvas size and no fill
-    self.logger('info', 'Generating canvas...')
-    canvas = Image.new('RGBA', size, None)
+    logger.info('Generating canvas...')
+    canvas = Image.new('RGBA', size, color)
     return canvas
     # image instance returned not original
 
   # render skribble
   def render(self):
-    canvas = self.render_canvas()
-    self.logger('info', 'PREFLIGHT')
-    self.preflight_background(canvas, self.background_asset)
-    self.preflight_items(self.item_assets)
-    self.preflight_messages(self.message_assets)
-    self.logger('info', 'PREFLIGHT COMPLETE')
-    self.logger('info', '{} errors...'.format(len(self.errors)))
+    try:
+      canvas = self.render_canvas()
+      logger.info('PREFLIGHT')
+      self.preflight_background(canvas, self.background_asset)
+      self.preflight_items(self.item_assets)
+      self.preflight_messages(self.message_assets)
+      logger.info('PREFLIGHT COMPLETE')
+    except:
+      # catch-all
+      self.report_to_api('error')
+      # equivalent to rollbar.report_exc_info(sys.exc_info())
+      # rollbar.report_exc_info()
+      return
 
-    if len(self.errors) > 0:
-      self.logger('info', 'ERRORS:')
-      for error in self.errors:
-        self.logger('error', error)
-    else:
-      self.logger('info', 'RENDERING SKRIBBLE...')
-      self.logger('info', '...')
-      self.logger('info', '.........')
-      self.logger('info', '...............')
-      self.logger('info', '.....................')
+    try:
+      logger.info('RENDERING SKRIBBLE...')
+      logger.info('...')
+      logger.info('.........')
+      logger.info('...............')
+      logger.info('.....................')
       canvas = Image.alpha_composite(canvas, self.background)
 
+      logger.debug('Merging layers...')
       for layer in self.layers:
         canvas = Image.alpha_composite(canvas, layer)
-
+      logger.info('Writing to file...')
       string_buffer = cStringIO.StringIO()
       canvas.save(string_buffer, 'PNG')
       self.preview(canvas)
-      return string_buffer
-
+      # upload skribble to s3
+      self.upload_skribble_to_s3(canvas)
+      self.report_to_api('success')
+    except:
+      # catch-all
+      self.report_to_api('error')
+      # equivalent to rollbar.report_exc_info(sys.exc_info())
+      # rollbar.report_exc_info()
+      return
 
 def handler(event, context):
-  # only getting skribble id will need to actually make api call to retrieve url
-  # youll need to save to temp storage before returning
-  # upload to temp lambda s3
-  # upload to api
-
-  # hardcoded bucket name, update if we'll be changing buckets
-  bucket = 'temp-lamda'
-  # create a key (file name) based on skribble id
-  key = '{}'.format(event['skribble_id'])
-  # create skribble instance
-  skribble = Skribble(event)
-  # render skribble
-  render = skribble.render()
-  # connect to s3
-  s3 = boto3.resource('s3')
-  # upload in memory buffer to bucket
-  if render:
-    s3.Bucket('temp-lamda').put_object(Key=key, Body=render.getvalue())
-
-data = {
-   "skribble_id": "82dd5620-df30-11e5-a52e-0800274f2cef",
-   "skribble_url": "http://mockbin.com/bin/7a4dfb9f-6796-4521-83c9-27dbc98d5100",
-   "post_back": "https://api-local.changemyworldnow.com/skribble/82dd5620-df30-11e5-a52e-0800274f2cef/image?a=BJEOJsdvioq:sad;er"
-}
-test = Skribble(data)
-test.render()
+  Skribble(event)
