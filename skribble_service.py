@@ -316,23 +316,24 @@ class Skribble:
 
   # resize an asset
   def resize (self, processed_asset):
-    self.logger('info', 'Resizing asset {}...'.format(processed_asset['raw']['media_id']))
+    logger.info('Resizing asset {}...'.format(processed_asset['raw']['media_id']))
     try:
       # original width & height of asset
       o_width = round((processed_asset['asset'].size[0]), 14)
       o_height = round((processed_asset['asset'].size[1]), 14)
+      scale_value = float(processed_asset['scale_value'])
       # resized width & height
-      r_width = int(o_width * processed_asset['scale_value'])
-      r_height = int(o_height * processed_asset['scale_value'])
+      r_width = int(o_width * scale_value)
+      r_height = int(o_height * scale_value)
       # resized asset
-      self.logger('info', 'Resized asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Resized asset {}...'.format(processed_asset['raw']['media_id']))
       return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
     except:
       raise Exception('Unable to resize asset {}...'.format(processed_asset['raw']['media_id']))
 
   # center asset for rotation
   def center (self, base, processed_asset):
-    self.logger('info', 'Centering asset {}...'.format(processed_asset['raw']['media_id']))
+    logger.info('Centering asset {}...'.format(processed_asset['raw']['media_id']))
     try:
       # dimensions for base
       base_width, base_height = base.size
@@ -343,15 +344,15 @@ class Skribble:
       asset_width, asset_height = processed_asset['resized_asset'].size
       x = center_x - (asset_width / 2)
       y = center_y - (asset_height / 2)
-      self.logger('info', 'Centered asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Centered asset {}...'.format(processed_asset['raw']['media_id']))
       return self.paste(base, processed_asset['resized_asset'], (x,y))
     except:
-      self.logger('error', 'Unable to center asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to center asset {}...'.format(processed_asset['raw']['media_id']))
       raise Exception('Unable to center asset {}...'.format(processed_asset['raw']['media_id']))
 
   # crop asset from its center
   def crop_from_center (self, processed_asset, proposed_size):
-    self.logger('info', 'Cropping asset {} from center...'.format(processed_asset['raw']['media_id']))
+    logger.info('Cropping asset {} from center...'.format(processed_asset['raw']['media_id']))
     try:
       # img size
       width, height = processed_asset['asset'].size
@@ -363,15 +364,15 @@ class Skribble:
       right = proposed_width + left
       bottom = proposed_height + top
       # crop asset from center
-      self.logger('info', 'Cropped asset {} from center...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Cropped asset {} from center...'.format(processed_asset['raw']['media_id']))
       return processed_asset['asset'].crop((left, top, right, bottom))
     except:
-      self.logger('error', 'Unable to crop asset {} from center...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to crop asset {} from center...'.format(processed_asset['raw']['media_id']))
       raise Exception('Unable to crop asset {} from center...'.format(processed_asset['raw']['media_id']))
 
   # resize asset to fit within proposed size
   def resize_from_center(self, processed_asset, proposed_size):
-    self.logger('info', 'Resizing asset {} from center...'.format(processed_asset['raw']['media_id']))
+    logger.info('Resizing asset {} from center...'.format(processed_asset['raw']['media_id']))
     try:
       # asset dimensions
       width, height = processed_asset['asset'].size
@@ -381,7 +382,7 @@ class Skribble:
       width_difference = proposed_width - width
       height_difference = proposed_height - height
       # if width requires scaling priority scale by proposed width
-      self.logger('info', 'Resized asset {} from center...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Resized asset {} from center...'.format(processed_asset['raw']['media_id']))
       if width_difference > height_difference:
         r_width = proposed_width
         r_height = int((height * proposed_width) / width)
@@ -392,13 +393,13 @@ class Skribble:
         r_width = int((width * proposed_height) / height)
         return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
     except:
-      self.logger('error', 'Unable to resize asset {} from center...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to resize asset {} from center...'.format(processed_asset['raw']['media_id']))
       raise Exception('Unable to resize asset {} from center...'.format(processed_asset['raw']['media_id']))
 
   # format background
   def transform_background(self, base, processed_asset):
     try:
-      self.logger('info', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.info('Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
       # if sizes are equal do nothing
       if base.size == processed_asset['asset'].size:
         return processed_asset['asset']
@@ -409,57 +410,71 @@ class Skribble:
         # if either the width or height of the layer are smaller then the width or height of the base resize the layer to cover the base area
         if asset_width < base_width | asset_height < base_height:
           # resize the layer
-          self.logger('info', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+          logger.debug('Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
           return self.resize_from_center(processed_asset, base.size)
         # crop the oversized layer from center to fit exactly within the base area
-        self.logger('info', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+        logger.debug('Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
         return self.crop_from_center(processed_asset, base.size)
     except:
-      self.logger('error', 'Formatting background asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Error, Failed to format background asset {}...'.format(processed_asset['raw']['media_id']))
       raise
 
   def position_scale_rotate(self, processed_asset):
-    self.logger('info', 'Positioning asset {}...'.format(processed_asset['raw']['media_id']))
-    self.logger('info', 'Scaling asset {}...'.format(processed_asset['raw']['media_id']))
-    self.logger('info', 'Rotating asset {}...'.format(processed_asset['raw']['media_id']))
+    logger.info('Positioning asset {}...'.format(processed_asset['raw']['media_id']))
+    logger.info('Scaling asset {}...'.format(processed_asset['raw']['media_id']))
+    logger.info('Rotating asset {}...'.format(processed_asset['raw']['media_id']))
     try:
       base = self.render_canvas()
       # # dimensions for base
       base_width, base_height = base.size
+      logger.debug('The base width is {}...'.format(base_width))
+      logger.debug('The base height is {}...'.format(base_height))
       # # dimensions for asset
       asset_width, asset_height = processed_asset['resized_asset'].size
+      logger.debug('The asset width is {}...'.format(asset_width))
+      logger.debug('The asset height is {}...'.format(asset_height))
       # # point of pivot (asset centerpoint)
       pivot_x, pivot_y = processed_asset['pivot']
+      logger.debug('The x pivot is {}...'.format(pivot_x))
+      logger.debug('The y pivot is {}...'.format(pivot_y))
       # # center of base
       center_x = base_width / 2
       center_y = base_height / 2
+      logger.debug('The x center is {}...'.format(center_x))
+      logger.debug('The y center is {}...'.format(center_y))
       # dimensions for asset
       x = center_x - (asset_width / 2)
       y = center_y - (asset_height / 2)
+      logger.debug('The X coordinate is {}...'.format(x))
+      logger.debug('The Y coordinate is {}...'.format(y))
       # determine offset to reposition centered image after rotation
       x_shift = processed_asset['n_coordinates'][0] - x
       y_shift = processed_asset['n_coordinates'][1] - y
+      logger.debug('The X shift is {}...'.format(x_shift))
+      logger.debug('The Y shift is {}...'.format(y_shift))
       # calculate padding for canvas
       x_padding = abs(x_shift)
       y_padding = abs(y_shift)
+      logger.debug('The X padding is {}...'.format(x_padding))
+      logger.debug('The Y padding is {}...'.format(y_padding))
       # center image
       centered = self.center(base, processed_asset)
       # pad image
       padded = ImageOps.expand(centered, border=(int(x_padding), int(y_padding)))
       # rotate image
       rotated = padded.rotate(-processed_asset['rotation_value'])
+      logger.debug('Rotated asset {}...'.format(processed_asset['raw']['media_id']))
       # reposition image using offset and reset asset in dictionary
       processed_asset['asset'] = ImageChops.offset(rotated, int(x_shift), int(y_shift))
+      logger.debug('Positioned asset {}...'.format(processed_asset['raw']['media_id']))
       # crop bleed from offset
       cropped_asset = self.crop_from_center(processed_asset, base.size)
-      self.logger('info', 'Positioned asset {}...'.format(processed_asset['raw']['media_id']))
-      self.logger('info', 'Scaled asset {}...'.format(processed_asset['raw']['media_id']))
-      self.logger('info', 'Rotated asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Scaled asset {}...'.format(processed_asset['raw']['media_id']))
       return cropped_asset
     except:
-      self.logger('error', 'Unable to Position asset {}...'.format(processed_asset['raw']['media_id']))
-      self.logger('error', 'Unable to Scale asset {}...'.format(processed_asset['raw']['media_id']))
-      self.logger('error', 'Unable to Rotate asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to Position asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to Scale asset {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to Rotate asset {}...'.format(processed_asset['raw']['media_id']))
       raise
 
 #########################
@@ -468,32 +483,43 @@ class Skribble:
 
   # check background to see if cropping or resizing is required
   def preflight_background (self, base, raw_asset):
-    self.logger('info', 'PREFLIGHT - BACKGROUND')
-    self.logger('info', 'Performing background preflight...')
+    logger.info('')
+    logger.info('PREFLIGHT - BACKGROUND')
+    logger.info('Performing background preflight...')
+    logger.info('')
     # validate url, type, and generate asset
+    if raw_asset == None:
+      logger.warning('No background present, rendering white background...')
+      self.background = self.render_canvas(color=(255, 255, 255))
+      return
     try:
+      logger.info("Rendering background...")
       processed_asset = {}
       processed_asset['raw'] = raw_asset
       processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
       self.background = self.transform_background(base, processed_asset)
-      self.logger('info', 'Background {} passed preflight...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Background {} passed preflight...'.format(processed_asset['raw']['media_id']))
+      logger.info('')
     except:
-      self.logger('error', 'Background {} failed preflight, verify source URL and image type.'.format(processed_asset['raw']['media_id']))
+      logger.error('Background {} failed preflight, verify source URL and image type.'.format(processed_asset['raw']['media_id']))
       raise
 
-  # check items and perform necessary manipulations
-  def preflight_items (self, items):
-    self.logger('info', 'PREFLIGHT - ITEMS')
-    self.logger('info', 'Performing items preflight...')
+  def preflight (self, asset_list):
+    if asset_list == None:
+      logger.warning('No assets present...')
+      return
     # store validated assets
-    assets = []
-    # iterate through items list
-    for item in items:
+    processed_assets = []
+    # iterate through assets list
+    for asset in asset_list:
+      logger.info('')
+      logger.info('Preflighting asset {}...'.format(asset['media_id']))
       try:
+        logger.debug('Preprocessing asset {}...'.format(asset['media_id']))
         # create a new dictionary to store values
         processed_asset = {}
-        # store reference to original item
-        processed_asset['raw'] = item
+        # store reference to original asset
+        processed_asset['raw'] = asset
         # validate url, type, and generate asset
         processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
         # # get scale value
