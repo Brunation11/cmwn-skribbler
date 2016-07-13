@@ -44,94 +44,109 @@ import logging, requests, cStringIO, json, boto3, os, sys, uuid, hashlib, base64
 # uuid          UUID objects according to RFC 4122
 # logging       info, error, debug messages
 # base64        encoding for posting images
+# hashlib       encode and decode in sha1/md5/etc
+# rollbar       info, error, debug logging
 
 # initiate logger
 logger = logging.getLogger()
 # set base level for logger
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
+# create handler for logging at console lvl
+ch = logging.StreamHandler(sys.stdout)
+# attatch handler to logger
+logger.addHandler(ch)
+
+# initiate rollbar
+# rollbar.init('POST_SERVER_ITEM_ACCESS_TOKEN', 'production')  # access_token, environment
+
+
 
 class Skribble:
   # init instance by extracting background, items, and messages
   def __init__(self, event):
     url = event['skribble_url']
-    self.skribble_json = json.load(urllib2.urlopen(url))
+    self.media_url_base = 'https://media.changemyworldnow.com/a/{}'
+    logger.info('Starting to process Skribble at {}...'.format(url))
+    self.bucket = 'cmwn-skribble'
+    self.post_back = event['post_back']
+    self.skribble_json = requests.get(url).json()
+    logger.debug(self.skribble_json)
     self.background_asset = self.skribble_json['rules']['background']
+    logger.debug(self.background_asset)
     self.item_assets = self.skribble_json['rules']['items']
+    logger.debug(self.item_assets)
     self.message_assets = self.skribble_json['rules']['messages']
+    logger.debug(self.message_assets)
     self.background = None
     self.layers = []
-    self.errors = []
+    self.render()
 
 #########################
 # HELPER METHODS
 #########################
-  # logging
-  def logger (self, type, message):
-    print(message)
-    if type == 'info':
-      logger.info(message)
-    elif type == 'error':
-      self.errors.append(message)
-      logger.error(message)
-
-  # validate url
-  def valid_url (self, raw_asset):
-    self.logger('info', 'Validating url of {}...'.format(raw_asset['media_id']))
-    try:
-      urllib2.urlopen(urllib2.Request(raw_asset['src']))
-      self.logger('info', 'Validated url of {}...'.format(raw_asset['media_id']))
-      return True
-    except:
-      self.logger('error', 'Invalid url for {}...'.format(raw_asset['media_id']))
-      raise Exception('Invalid url for {}...'.format(raw_asset['media_id']))
-      return False
-
   # validate response is imgage/png
-  def valid_type (self, raw_asset):
-    self.logger('info', 'Validating type of {}...'.format(raw_asset['media_id']))
+  def valid_type (self, raw_asset, response):
+    logger.info('Validating mime_type of {}...'.format(raw_asset['media_id']))
     mime_type = raw_asset['mime_type']
-    response = self.url_response(raw_asset)
-    if response.info()['Content-type'] == mime_type:
-      self.logger('info', 'Validated type of {}...'.format(raw_asset['media_id']))
-      return True
-    else:
-      self.logger('error', 'Invalid type for {}, expected {}, instead saw {}...'.format(raw_asset['media_id'], mime_type, response.info()['Content-type']))
-      raise Exception('Invalid type for {}, expected {}, instead saw {}...'.format(raw_asset['media_id'], mime_type, response.info()['Content-type']))
-      return False
+    logger.debug(mime_type)
+    logger.info('Found file of content-type {}'.format(response.headers['Content-Type']))
+    try:
+      if response.headers['Content-Type'] == mime_type:
+        logger.info('Validated type of {}...'.format(raw_asset['media_id']))
+        return True
+      else:
+        logger.error('Invalid type for {}, expected {}, instead saw {}...'.format(raw_asset['media_id'], mime_type, response.info()['Content-type']))
+        raise Exception('Invalid type for {}, expected {}, instead saw {}...'.format(raw_asset['media_id'], mime_type, response.info()['Content-type']))
+        return False
+    except:
+      raise
 
 
   # verify assets by checksum type and value
-  def validate_checksum(self, raw_asset):
-    self.logger('info', 'Validating checksum of {}...'.format(raw_asset['media_id']))
+  def validate_checksum(self, raw_asset, response):
+    logger.info('Validating checksum of {}...'.format(raw_asset['media_id']))
     # verify check type
     type_of_check = raw_asset['check']['type']
     value = raw_asset['check']['value']
-    response = self.url_response(raw_asset)
     if type_of_check == 'sha1':
-      self.logger('info', 'Validating checksum of {} using sha1...'.format(raw_asset['media_id']))
-      hash_value = hashlib.sha1(response.read()).hexdigest()
+      logger.info('Validating checksum of {} using sha1...'.format(raw_asset['media_id']))
+      hash_value = hashlib.sha1(response.content).hexdigest()
+      logger.debug(hash_value)
     elif type_of_check == 'md5':
-      self.logger('info', 'Validating checksum of {} using md5...'.format(raw_asset['media_id']))
-      hash_value = hashlib.md5(response.read()).hexdigest()
+      logger.info('Validating checksum of {} using md5...'.format(raw_asset['media_id']))
+      hash_value = hashlib.md5(response.content).hexdigest()
 
     if hash_value == value:
-      self.logger('info', 'Validated checksum of {}...'.format(raw_asset['media_id']))
+      logger.info('Valid checksum for {}...'.format(raw_asset['media_id']))
       return True
     else:
-      self.logger('error', '{} failed checksum validation, expected checksum {}, instead saw {}...'.format(raw_asset['media_id'], value, hash_value))
+      logger.error('{} failed checksum validation, expected checksum {}, instead saw {}...'.format(raw_asset['media_id'], value, hash_value))
       raise Exception('{} failed checksum validation, expected checksum {}, instead saw {}...'.format(raw_asset['media_id'], value, hash_value))
       return False
 
   # retrieve content from url
-  def url_response (self, raw_asset):
-    return urllib2.urlopen(raw_asset['src'])
+  def url_response (self, url, redirect_count=0):
+    if redirect_count > 3:
+      raise Exception('Exceeded redirect counts for {}...'.format(url))
+    logger.info('Downloading Skribble data {}...'.format(url))
+    logger.debug(url)
+    response = requests.get(url, stream=True)
+    logger.debug('{} returned status code {}'.format(url, response.status_code))
+    if response.status_code == 200:
+      return response
+    elif response.status_code == 301 | response.status_code == 302:
+      logger.debug('{} is being redirected to {}'.format(url, response.headers['Location']))
+      redirect_count += 1
+      return url_response(response.headers['Location'], redirect_count)
+    raise Exception('{} has an invalid response code {}'.format(url, response.status_code))
 
   # create string buffer for reading and writing data
   def string_buffer (self, response):
-    return cStringIO.StringIO(response.read())
+    return cStringIO.StringIO(response.content)
 
   # load image from a file in this case from the string buffer
   def image (self, file):
+    logger.debug('Opening image...')
     return Image.open(file).convert('RGBA')
 
   # open image (currently used for debugging)
