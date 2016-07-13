@@ -155,24 +155,24 @@ class Skribble:
 
   # get an assets top left coordinate
   def get_anchor_coordinates (self, raw_asset):
-    self.logger('info', 'Getting asset anchor points for {}...'.format(raw_asset['media_id']))
-    x = raw_asset['state']['left']
-    y = raw_asset['state']['top']
+    logger.info('Getting asset anchor points for {}...'.format(raw_asset['media_id']))
+    x = float(raw_asset['state']['left'])
+    y = float(raw_asset['state']['top'])
     return x,y
 
   # get an assets scale if any
   def get_scale_value (self, raw_asset):
-    self.logger('info', 'Getting scale value for {}...'.format(raw_asset['media_id']))
-    return raw_asset['state']['scale']
+    logger.info('Getting scale value for {}...'.format(raw_asset['media_id']))
+    return float(raw_asset['state']['scale'])
 
   # get an assets rotation if any
   def get_rotation_value (self, raw_asset):
-    self.logger('info', 'Getting rotation value for {}...'.format(raw_asset['media_id']))
-    return raw_asset['state']['rotation']
+    logger.info('Getting rotation value for {}...'.format(raw_asset['media_id']))
+    return float(raw_asset['state']['rotation'])
 
   # calculate all corners after asset is scaled
   def calculate_corners (self, processed_asset):
-    self.logger('info', 'Calculating corners for {}...'.format(processed_asset['raw']['media_id']))
+    logger.info('Calculating corners for {}...'.format(processed_asset['raw']['media_id']))
     try:
       corners = {}
       # dimensions
@@ -181,16 +181,16 @@ class Skribble:
       corners['top_right'] = ((processed_asset['n_coordinates'][0] + w), processed_asset['n_coordinates'][1])
       corners['bottom_right'] = ((processed_asset['n_coordinates'][0] + w), (processed_asset['n_coordinates'][1] + h))
       corners['bottom_left'] = (processed_asset['n_coordinates'][0], (processed_asset['n_coordinates'][1] + h))
-      self.logger('info', 'Calculated corners for {}...'.format(processed_asset['raw']['media_id']))
+      logger.debug('Calculated corners for {}...'.format(processed_asset['raw']['media_id']))
       return corners
     except:
-      self.logger('error', 'Unable to calculate corners for {}...'.format(processed_asset['raw']['media_id']))
+      logger.error('Unable to calculate corners for {}...'.format(processed_asset['raw']['media_id']))
       raise Exception('Unable to calculate corners for {}...'.format(processed_asset['raw']['media_id']))
 
   # # verify that non-overlapable assets don't collide
   def collision_detected (self, processed_base_asset, processed_assets):
     base_corners = processed_base_asset['corners']
-    self.logger('info', 'Starting collision tests...')
+    logger.info('Starting collision tests...')
     for asset in processed_assets:
       asset_corners = asset['corners']
       if processed_base_asset['raw'] != asset['raw']:
@@ -199,33 +199,39 @@ class Skribble:
             if (base_corners['top_left'][0] <= asset_corners['top_right'][0]) | (asset_corners['top_left'][0] <= base_corners['top_right'][0]):
               if (base_corners['top_left'][1] >= asset_corners['top_left'][1]) | (asset_corners['top_left'][1] >= base_corners['top_left'][1]):
                 if (base_corners['top_left'][1] <= asset_corners['bottom_left'][1]) | (asset_corners['top_left'][1] <= base_corners['bottom_left'][1]):
-                  self.logger('error', 'Error, collision detected between {} and {}...'.format(base['raw']['media_id'], asset['raw']['media_id']))
-                  raise Exception('Error, collision detected between {} and {}...'.format(base['raw']['media_id'], asset['raw']['media_id']))
+                  logger.error('Error, collision detected between {} and {}...'.format(processed_base_asset['raw']['media_id'], asset['raw']['media_id']))
+                  raise Exception('Error, collision detected between {} and {}...'.format(processed_base_asset['raw']['media_id'], asset['raw']['media_id']))
                   return True
+      logger.debug('No collision detected between {} and {}...'.format(processed_base_asset['raw']['media_id'], asset['raw']['media_id']))
 
   # validate an assets url and type
   def validate_and_get_asset (self, raw_asset):
     try:
-      self.logger('info', 'Validating {}...'.format(raw_asset['media_id']))
-      self.valid_url(raw_asset)
-      self.valid_type(raw_asset)
-      self.validate_checksum(raw_asset)
-      self.logger('info', 'Validated url, type, and checksum of {}...'.format(raw_asset['media_id']))
-    except:
+      logger.info('Downloading asset for {}...'.format(raw_asset['media_id']))
+      logger.debug(raw_asset)
+      media_data_url = self.media_url_base.format(raw_asset['media_id'])
+      media_data = self.url_response(media_data_url).json()
+      if raw_asset['media_id'] != media_data['media_id']:
+        raise Exception('Media IDs did not match...')
+      response = self.url_response(media_data['src'])
+      logger.info('Validating {}...'.format(media_data['media_id']))
+      self.valid_type(media_data, response)
+      self.validate_checksum(media_data, response)
+      logger.debug('Validated url, type, and checksum of {}...'.format(media_data['media_id']))
+    except Exception as error:
+      logger.error(error)
       raise
-
     try:
-      response = self.url_response(raw_asset)
       file = self.string_buffer(response)
-      self.logger('info', 'Fetching image for {}...'.format(raw_asset['media_id']))
+      logger.info('Fetching image for {}...'.format(media_data['media_id']))
       return self.image(file)
     except:
-      self.logger('error', 'Unable to retrieve asset for {}...'.format(raw_asset['media_id']))
-      raise Exception('Unable to retrieve asset for {}...'.format(raw_asset['media_id']))
+      logger.error('Unable to retrieve asset for {}...'.format(media_data['media_id']))
+      raise Exception('Unable to retrieve asset for {}...'.format(media_data['media_id']))
 
   # recalculate new coordinates after asset is scaled
   def recalculate_coordinates (self, processed_asset):
-    self.logger('info', 'Recalculating coordinates for {}...'.format(processed_asset['raw']['media_id']))
+    logger.info('Recalculating coordinates for {}...'.format(processed_asset['raw']['media_id']))
     try:
       # original dimensions
       o_width, o_height = processed_asset['asset'].size
