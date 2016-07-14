@@ -33,7 +33,8 @@
 
 from __future__ import print_function
 from PIL import Image, ImageChops, ImageOps
-import logging, requests, cStringIO, json, boto3, os, sys, uuid, hashlib, base64 #rollbar
+from rollbar.logger import RollbarHandler
+import logging, requests, cStringIO, json, boto3, os, sys, uuid, hashlib, base64, rollbar, config
 # PIL           Python Image Library
 # requests       open arbitrary resources from url
 # cstringIO     create string buffer (used to open virtual image from url)
@@ -46,30 +47,34 @@ import logging, requests, cStringIO, json, boto3, os, sys, uuid, hashlib, base64
 # base64        encoding for posting images
 # hashlib       encode and decode in sha1/md5/etc
 # rollbar       info, error, debug logging
-
-# initiate logger
-logger = logging.getLogger()
-# set base level for logger
-logger.setLevel(logging.DEBUG)
-# create handler for logging at console lvl
-ch = logging.StreamHandler(sys.stdout)
-# attatch handler to logger
-logger.addHandler(ch)
+# config        config file
 
 # initiate rollbar
-# rollbar.init('POST_SERVER_ITEM_ACCESS_TOKEN', 'production')  # access_token, environment
-
-
+rollbar.init(config.rollbar_access_token, config.rollbar_env)  # access_token, environment
+# initiate logger
+logger = logging.getLogger('skribble')
+# set base level for logger
+logger.setLevel(logging.DEBUG)
+# report ERROR and above to Rollbar
+rollbar_handler = RollbarHandler()
+rollbar_handler.setLevel(logging.ERROR)
+# create handler for logging at console lvl
+ch = logging.StreamHandler()
+# attach the handlers to the root logger
+logger.addHandler(rollbar_handler)
+# attatch handler to logger
+logger.addHandler(ch)
 
 class Skribble:
   # init instance by extracting background, items, and messages
   def __init__(self, event):
-    url = event['skribble_url']
-    self.media_url_base = 'https://media.changemyworldnow.com/a/{}'
-    logger.info('Starting to process Skribble at {}...'.format(url))
-    self.bucket = 'cmwn-skribble'
+    logger.debug('Received event {}...'.format(event))
+    self.skribble_id = event['skribble_id']
+    self.url = event['skribble_url']
     self.post_back = event['post_back']
-    self.skribble_json = requests.get(url).json()
+    self.media_url_base = 'https://media.changemyworldnow.com/a/{}'
+    logger.info('Starting to process Skribble at {}...'.format(self.url))
+    self.skribble_json = requests.get(self.url).json()
     logger.debug(self.skribble_json)
     self.background_asset = self.skribble_json['rules']['background']
     logger.debug(self.background_asset)
@@ -276,14 +281,22 @@ class Skribble:
     logger.info('Uploading to S3...')
     try:
       # create a key (file name) based on skribble id
-      key = '{}'.format(event['skribble_id'])
+      key = '{}'.format(self.skribble_id)
       # connect to s3
       s3 = boto3.resource('s3')
       # upload in memory buffer to bucket
-      s3.Bucket('temp-lamda').put_object(Key=key, Body=rendered_asset.getvalue())
+      # s3.Bucket(config.aws_s3_bucket).put_object(Key=key, Body=rendered_asset.getvalue())
+      s3.Object(config.aws_s3_bucket, key).put(Body=rendered_asset.getvalue())
     except Exception as error:
+      print(error)
       logger.error('Error uploading to S3 {}...'.format(error))
       raise
+
+  def report_error_to_api (self):
+    try:
+      self.report_to_api('error')
+    except:
+      logger.error('Unable to report error to API...')
 
   def report_to_api (self, status):
     logger.info('Starting Skribble upload for {}...'.format(self.skribble_json['skribble_id']))
@@ -291,7 +304,7 @@ class Skribble:
     try:
       # Build the request
       headers = {'Content-Type': 'application/json'}
-      data = {'status': status}
+      data = json.dumps({'status': status})
       logger.debug('Submitting to {} with data {} and headers {}...'.format(self.post_back, data, headers))
       response = requests.post(self.post_back, data=data, headers=headers)
       # server response
@@ -301,7 +314,7 @@ class Skribble:
         raise Exception('Unexpected response code from API, expected 201, saw {}...'.format(response.status_code))
       logger.info('Successfully submitted status {}...'.format(self.skribble_json['skribble_id']))
     except:
-      logger.error('Unable to upload Skribble {}...'.format(self.skribble_json['skribble_id']))
+      logger.error('Unable to report status {} to API...'.format(status))
       raise
 
 #########################
@@ -554,12 +567,14 @@ class Skribble:
 
   # check items and perform necessary manipulations
   def preflight_items (self, items):
+    logger.info('')
     logger.info('PREFLIGHT - ITEMS')
     logger.debug('Performing items preflight...')
     self.preflight(items)
 
   # check messages and perform necessary manipulations
   def preflight_messages (self, messages):
+    logger.info('')
     logger.info('PREFLIGHT - MESSAGES')
     logger.debug('Performing messages preflight...')
     self.preflight(messages)
@@ -588,8 +603,6 @@ class Skribble:
     except:
       # catch-all
       self.report_to_api('error')
-      # equivalent to rollbar.report_exc_info(sys.exc_info())
-      # rollbar.report_exc_info()
       return
 
     try:
@@ -606,16 +619,17 @@ class Skribble:
       logger.info('Writing to file...')
       string_buffer = cStringIO.StringIO()
       canvas.save(string_buffer, 'PNG')
-      self.preview(canvas)
       # upload skribble to s3
-      self.upload_skribble_to_s3(canvas)
+      self.upload_skribble_to_s3(string_buffer)
       self.report_to_api('success')
     except:
       # catch-all
-      self.report_to_api('error')
-      # equivalent to rollbar.report_exc_info(sys.exc_info())
-      # rollbar.report_exc_info()
+      self.report_error_to_api()
       return
 
 def handler(event, context):
-  Skribble(event)
+  for record in event['Records']:
+    message = json.loads(record['Sns']['Message'])
+    logger.debug(message)
+    Skribble(message)
+
