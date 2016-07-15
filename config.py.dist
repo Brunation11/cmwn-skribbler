@@ -1,2 +1,3 @@
 rollbar_access_token = 'ADD ROLLBAR KEY HERE'
 rollbar_env = 'skribble_dev'
+aws_s3_bucket = 'cmwn-skribble'
