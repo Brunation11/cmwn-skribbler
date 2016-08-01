@@ -46,16 +46,27 @@ import boto3  # aws client
 import hashlib  # encode and decode in sha1/md5/etc
 import rollbar  # rollbar integration
 import config  # config file
-import argparse  # parse args from the command line
-import sys  # common system tools
 import pprint  # pretty prints data
+
+# initiate rollbar
+rollbar.init(config.rollbar_access_token, config.rollbar_env, locals={"timeout": 30})  # access_token, environment
+
+# initiate logger
+logger = logging.getLogger('skribble')
+
+# report ERROR and above to Rollbar
+rollbar_handler = RollbarHandler()
+rollbar_handler.setLevel(logging.INFO)
+
+logger.addHandler(rollbar_handler)
+
+logger.setLevel(logging.DEBUG)
 
 
 class Skribble:
     # init instance by extracting background, items, and messages
     def __init__(self, event):
-
-        logger.info('Received skribble:\n%s', pprint.pformat(event))
+        logger.info('Received skribble:\n{}'.format(pprint.pformat(event)))
 
         self.skribble_id = event['skribble_id']
         self.url = event['skribble_url']
@@ -63,10 +74,10 @@ class Skribble:
         self.show_preview = event['preview']
         self.media_url_base = 'https://media.changemyworldnow.com/a/{}'
 
-        logger.debug('Downloading skribble data from: %s', self.url)
+        logger.debug('Downloading skribble data from: {}'.format(self.url))
 
         skribble_response = self.url_response(self.url)
-        logger.debug('Received skribble data:\n%s', pprint.pformat(skribble_response))
+        logger.debug('Received skribble data:\n{}'.format(pprint.pformat(skribble_response)))
 
         self.skribble_json = skribble_response.json()
 
@@ -82,23 +93,23 @@ class Skribble:
     #########################
     # validates downloaded asset matches expected content type from media server
     def valid_type(self, raw_asset, response):
-        logger.debug('Validating mime_type of asset: %s', raw_asset['media_id'])
+        logger.debug('Validating mime_type of asset: {}'.format(raw_asset['media_id']))
         mime_type = raw_asset['mime_type']
 
-        logger.debug('Expected MIME: %s', mime_type)
-        logger.debug('Content type from media service: %s', response.headers['Content-Type'])
+        logger.debug('Expected MIME: {}'.format(mime_type))
+        logger.debug('Content type from media service: {}'.format(response.headers['Content-Type']))
 
         if response.headers['Content-Type'] == mime_type:
             logger.debug('Valid Content-Type')
             return True
 
         raise Exception(
-            'Invalid type for asset: %s, expected %s, instead saw %s', raw_asset['media_id'], mime_type,
-            response.info()['Content-type'])
+            'Invalid type for asset: {}, expected {}, instead saw {}'.format(raw_asset['media_id'], mime_type,
+                                                                             response.info()['Content-type']))
 
     # Validates the assets checksum by comparing it to the media server
     def validate_checksum(self, raw_asset, response):
-        logger.debug('Validating checksum of asset: %s', raw_asset['media_id'])
+        logger.debug('Validating checksum of asset: {}'.format(raw_asset['media_id']))
 
         # verify check type
         type_of_check = raw_asset['check']['type']
@@ -111,43 +122,40 @@ class Skribble:
             logger.info('Using MD5')
             hash_value = hashlib.md5(response.content).hexdigest()
         else:
-            logger.critical('Unsupported checksum type: %s', type_of_check)
-            raise Exception('Unsupported checksum type: %s'.format(type_of_check))
+            raise Exception('Unsupported checksum type: {}'.format(type_of_check))
 
-        logger.debug('Expected value: %s', expected_hash)
-        logger.debug('Calculated value: %s', hash_value)
+        logger.debug('Expected value: {}'.format(expected_hash))
+        logger.debug('Calculated value: {}'.format(hash_value))
 
         if hash_value == expected_hash:
             logger.debug('Valid checksum')
             return True
         else:
-            logger.critical('Asset %s failed checksum validation! expected %s and calculated %s', raw_asset['media_id'],
-                            expected_hash, hash_value)
             raise Exception(
-                'Asset %s failed checksum validation! expected %s and calculated %s'.format(raw_asset['media_id'],
+                'Asset {} failed checksum validation! expected {} and calculated {}'.format(raw_asset['media_id'],
                                                                                             expected_hash, hash_value))
 
     # Fetches data from a url
     def url_response(self, url, redirect_count=0):
 
         if redirect_count > 3:
-            raise Exception('Exceeded redirect counts for %s'.format(url))
+            raise Exception('Exceeded redirect counts for {}'.format(url))
 
-        logger.debug('Downloading data from %s', url)
+        logger.debug('Downloading data from {}'.format(url))
 
-        response = requests.get(url, stream=True)
-        logger.debug('Status Code: %s', response.status_code)
+        response = requests.get(url, stream=True, timeout=30)
+        logger.debug('Status Code: {}'.format(response.status_code))
 
         if response.status_code == 200:
             return response
 
         if response.status_code == 301 | response.status_code == 302:
-            logger.debug('Redirect to: %s', response.headers['Location'])
+            logger.debug('Redirect to: {}'.format(response.headers['Location']))
             redirect_count += 1
 
             return self.url_response(response.headers['Location'], redirect_count)
 
-        raise Exception('Invalid response code %s from: %s'.format(response.status_code, url))
+        raise Exception('Invalid response code {} from: {}'.format(response.status_code, url))
 
     # Reports an error to the api
     def report_error_to_api(self):
@@ -158,14 +166,14 @@ class Skribble:
 
     # Reports a status back to the API
     def report_to_api(self, status):
-        logger.info('Reporting %s to api', status)
+        logger.info('Reporting {} to api'.format(status))
         # Build the request
         headers = {'Content-Type': 'application/json'}
 
         data = json.dumps({'status': status})
 
-        logger.debug('Submitting to %s\n with data: %s\n using headers: %s', self.post_back, pprint.pformat(data),
-                     pprint.pformat(headers))
+        logger.debug('Submitting to {}\n with data: {}\n using headers: {}'.format(self.post_back, pprint.pformat(data),
+                                                                                   pprint.pformat(headers)))
 
         response = requests.post(self.post_back, data=data, headers=headers)
         # server response
@@ -173,7 +181,7 @@ class Skribble:
         if response.status_code != 201:
             logger.debug(response.content)
             raise Exception(
-                'Unexpected response code from API, expected 201, saw %s, body:'.format(response.status_code,
+                'Unexpected response code from API, expected 201, saw {}, body:'.format(response.status_code,
                                                                                         response.content))
 
         logger.debug('Successfully submitted status {}'.format(self.skribble_json['skribble_id']))
@@ -184,18 +192,14 @@ class Skribble:
 
     def upload_skribble_to_s3(self, rendered_asset):
         logger.info('Uploading to S3')
-        try:
-            # create a key (file name) based on skribble id
-            file_name = '{}.png'.format(self.skribble_id)
-            # connect to s3
-            s3 = boto3.resource('s3')
+        # create a key (file name) based on skribble id
+        file_name = '{}.png'.format(self.skribble_id)
+        # connect to s3
+        s3 = boto3.resource('s3')
 
-            # upload in memory buffer to bucket
-            # s3.Bucket(config.aws_s3_bucket).put_object(Key=key, Body=rendered_asset.getvalue())
-            s3.Object(config.aws_s3_bucket, file_name).put(Body=rendered_asset.getvalue(), ContentType='image/png')
-        except Exception as error:
-            logger.error('Error uploading to S3 {}'.format(error))
-            raise
+        # upload in memory buffer to bucket
+        # s3.Bucket(config.aws_s3_bucket).put_object(Key=key, Body=rendered_asset.getvalue())
+        s3.Object(config.aws_s3_bucket, file_name).put(Body=rendered_asset.getvalue(), ContentType='image/png')
 
     # open image (currently used for debugging)
     def preview(self, rendered_asset):
@@ -216,19 +220,19 @@ class Skribble:
     def get_anchor_coordinates(self, raw_asset):
         x = float(raw_asset['state']['left'])
         y = float(raw_asset['state']['top'])
-        logger.debug('Found Anchor points: %s, %s', x, y)
+        logger.debug('Found Anchor points: {}, {}'.format(x, y))
         return x, y
 
     # get an assets scale if any
     def get_scale_value(self, raw_asset):
         scale_value = float(raw_asset['state']['scale'])
-        logger.debug('Scale value: %s', scale_value)
+        logger.debug('Scale value: {}'.format(scale_value))
         return scale_value
 
     # get an assets rotation if any
     def get_rotation_value(self, raw_asset):
         rotation_value = float(raw_asset['state']['rotation']);
-        logger.debug('Rotation value: %s', rotation_value)
+        logger.debug('Rotation value: {}'.format(rotation_value))
         return rotation_value
 
     # calculate all corners after asset is scaled
@@ -236,41 +240,43 @@ class Skribble:
         corners = {}
 
         # dimensions
-        w, h = processed_asset['resized_asset'].size
+        w = processed_asset['original_width']
+        h = processed_asset['original_height']
+
         corners['top_left'] = processed_asset['n_coordinates']
         corners['top_right'] = ((processed_asset['n_coordinates'][0] + w), processed_asset['n_coordinates'][1])
         corners['bottom_right'] = (
             (processed_asset['n_coordinates'][0] + w), (processed_asset['n_coordinates'][1] + h))
         corners['bottom_left'] = (processed_asset['n_coordinates'][0], (processed_asset['n_coordinates'][1] + h))
-        logger.debug('Calculated corners: $s', pprint.pformat(corners))
+        logger.debug('Calculated corners: $s'.format(pprint.pformat(corners)))
         return corners
 
     # verify that non-overlap assets don't collide
     # TODO Match up with front end collision detection
     def collision_detected(self, base_asset, processed_assets):
         base_corners = base_asset['corners']
-        logger.debug('Compare Asset Corners:\n%s', pprint.pformat(base_corners))
+        logger.debug('Compare Asset Corners:\n{}'.format(pprint.pformat(base_corners)))
 
         for asset in processed_assets:
             asset_corners = asset['corners']
-            logger.debug('Asset Corners:\n%s', pprint.pformat(asset_corners))
+            logger.debug('Asset Corners:\n{}'.format(pprint.pformat(asset_corners)))
 
-            # raise Exception('Collision detected between assets %s, %s', base_asset['raw']['media_id'],
+            # raise Exception('Collision detected between assets {}, {}', base_asset['raw']['media_id'],
             #                 asset['raw']['media_id'])
 
-            logger.debug('No collision detected between assets %s, %s', base_asset['raw']['media_id'],
-                         asset['raw']['media_id'])
+            logger.debug('No collision detected between assets {}, {}'.format(base_asset['raw']['media_id'],
+                                                                              asset['raw']['media_id']))
 
     # validate an assets url and type
     def validate_and_get_asset(self, raw_asset):
-        logger.info('Downloading media data for asset: %s', raw_asset['media_id'])
-        logger.debug('Raw Asset data:\n %s', pprint.pformat(raw_asset))
+        logger.info('Downloading media data for asset: {}'.format(raw_asset['media_id']))
+        logger.debug('Raw Asset data:\n {}'.format(pprint.pformat(raw_asset)))
         media_data_url = self.media_url_base.format(raw_asset['media_id'])
 
-        logger.debug('Media Url: %s', media_data_url)
+        logger.debug('Media Url: {}'.format(media_data_url))
 
         media_data = self.url_response(media_data_url).json()
-        logger.debug('Received Media data:\n %s', pprint.pformat(media_data))
+        logger.debug('Received Media data:\n {}'.format(pprint.pformat(media_data)))
 
         if raw_asset['media_id'] != media_data['media_id']:
             raise Exception('Media IDs did not match')
@@ -284,19 +290,23 @@ class Skribble:
         logger.debug('Validated url, type, and checksum of {}'.format(media_data['media_id']))
 
         asset_file = self.string_buffer(response)
-        logger.info('Fetching image for {}'.format(media_data['media_id']))
+        logger.info('Downloading image for {}'.format(media_data['media_id']))
         return self.image(asset_file)
 
     # recalculate new coordinates after asset is scaled
 
     def recalculate_coordinates(self, processed_asset):
-        logger.debug('Recalculating coordinates for asset: %s ', pprint.pformat(processed_asset))
+        logger.debug('Recalculating coordinates for asset: {} '.format(pprint.pformat(processed_asset)))
 
         # original dimensions
-        o_width, o_height = processed_asset['asset'].size
+        o_width = processed_asset['original_width']
+        o_height = processed_asset['original_height']
+
+        logger.debug(o_height)
+        logger.debug(o_width)
         # realized dimensions
 
-        r_width, r_height = processed_asset['resized_asset'].size
+        r_width, r_height = processed_asset['image'].size
 
         nx = processed_asset['raw']['state']['left']
         ny = processed_asset['raw']['state']['top']
@@ -311,19 +321,19 @@ class Skribble:
             nx = (processed_asset['coordinates'][0] + (width_difference / 2))
             ny = (processed_asset['coordinates'][1] + (height_difference / 2))
 
-        logger.debug('New Coordinates: %s', pprint.pformat([nx, ny]))
+        logger.debug('New Coordinates: {}, {}'.format(nx, ny))
         return nx, ny
 
     # find the pivot point for the asset now that it has moved
     def get_rotation_pivot(self, processed_asset):
-        logger.debug('Calculating rotation pivot point: ', pprint.pformat(processed_asset))
+        logger.debug('Calculating rotation pivot point: '.format(pprint.pformat(processed_asset)))
 
         # calculate x coordinate of center
-        center_x = processed_asset['n_coordinates'][0] + (processed_asset['resized_asset'].size[0] / 2)
+        center_x = processed_asset['n_coordinates'][0] + (processed_asset['image'].size[0] / 2)
 
         # calculate y coordinate of center
-        center_y = processed_asset['n_coordinates'][1] + (processed_asset['resized_asset'].size[1] / 2)
-        logger.debug('Pivot Point: %s ', pprint.pformat([center_x, center_y]))
+        center_y = processed_asset['n_coordinates'][1] + (processed_asset['image'].size[1] / 2)
+        logger.debug('Pivot Point: {}, {}'.format(center_x, center_y))
         return center_x, center_y
 
     #########################
@@ -337,39 +347,41 @@ class Skribble:
         return base
 
     # resize an asset
-    def resize(self, processed_asset):
+    def resize(self, image, scale_value):
         # original width & height of asset
-        o_width = round((processed_asset['asset'].size[0]), 14)
-        o_height = round((processed_asset['asset'].size[1]), 14)
-        scale_value = float(processed_asset['scale_value'])
+        o_width = round((image.size[0]), 14)
+        o_height = round((image.size[1]), 14)
+        scale_value = float(scale_value)
 
         # resized width & height
         r_width = int(o_width * scale_value)
         r_height = int(o_height * scale_value)
 
         # resized asset
-        logger.debug('Resized asset %s', processed_asset['raw']['media_id'])
-        return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
+        return image.resize((r_width, r_height), Image.ANTIALIAS)
 
     # center asset for rotation
-    def center(self, base, processed_asset):
+    def center(self, base, image):
         # dimensions for base
         base_width, base_height = base.size
+
         # center of base
         center_x = base_width / 2
         center_y = base_height / 2
+
         # dimensions for asset
-        asset_width, asset_height = processed_asset['resized_asset'].size
+        asset_width, asset_height = image.size
         x = center_x - (asset_width / 2)
         y = center_y - (asset_height / 2)
-        logger.debug('Centered asset %s', processed_asset['raw']['media_id'])
-        return self.paste(base, processed_asset['resized_asset'], (x, y))
+
+        logger.debug('Centering asset to: {}, {}'.format(x, y))
+        return self.paste(base, image, (x, y))
 
     # crop asset from its center
-    def crop_from_center(self, processed_asset, proposed_size):
+    def crop_from_center(self, image, proposed_size):
 
         # img size
-        width, height = processed_asset['asset'].size
+        width, height = image.size
 
         # proposed dimensions
         proposed_width, proposed_height = proposed_size
@@ -381,13 +393,13 @@ class Skribble:
         bottom = proposed_height + top
 
         # crop asset from center
-        logger.debug('Cropped asset %s', processed_asset['raw']['media_id'])
-        return processed_asset['asset'].crop((left, top, right, bottom))
+        logger.debug('Cropped asset: {}, {}, {}, {}'.format(left, top, right, bottom))
+        return image.crop((left, top, right, bottom))
 
     # resize asset to fit within proposed size
-    def resize_from_center(self, processed_asset, proposed_size):
+    def resize_from_center(self, image, proposed_size):
         # asset dimensions
-        width, height = processed_asset['asset'].size
+        width, height = image.size
 
         # proposed dimensions
         proposed_width, proposed_height = proposed_size
@@ -397,38 +409,37 @@ class Skribble:
         height_difference = proposed_height - height
 
         # if width requires scaling priority scale by proposed width
-        logger.debug('Resized asset {} from center'.format(processed_asset['raw']['media_id']))
-
         if width_difference > height_difference:
             r_width = proposed_width
             r_height = int((height * proposed_width) / width)
-            return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
+        else:
+            r_height = proposed_height
+            r_width = int((width * proposed_height) / height)
 
-        r_height = proposed_height
-        r_width = int((width * proposed_height) / height)
-        return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
+        logger.debug('Resized asset to: {}, {}'.format(r_height, r_width))
+        return image.resize((r_width, r_height), Image.ANTIALIAS)
 
     # format background
-    def transform_background(self, base, processed_asset):
+    def transform_background(self, base, image):
         logger.info('Transforming background')
 
         # if sizes are equal do nothing
-        if base.size == processed_asset['asset'].size:
-            return processed_asset['asset']
+        if base.size == image.size:
+            return image
 
         base_width, base_height = base.size
-        asset_width, asset_height = processed_asset['asset'].size
+        asset_width, asset_height = image.size
         # if either the width or height of the layer are smaller then the width or height of the
         # base resize the layer to cover the base area
 
         if asset_width < base_width | asset_height < base_height:
             # resize the layer
             logger.debug('Resizing background')
-            return self.resize_from_center(processed_asset, base.size)
+            return self.resize_from_center(image, base.size)
 
         # crop the larger layer from center to fit exactly within the base area
         logger.debug('Cropping background')
-        return self.crop_from_center(processed_asset, base.size)
+        return self.crop_from_center(image, base.size)
 
     def position_scale_rotate(self, processed_asset):
         logger.info('Positioning Asset')
@@ -437,54 +448,59 @@ class Skribble:
 
         # # dimensions for base
         base_width, base_height = base.size
-        logger.debug('base height and width: %s, %s', base_width, base_height)
+        logger.debug('base height and width: {}, {}'.format(base_width, base_height))
 
         # # dimensions for asset
-        asset_width, asset_height = processed_asset['resized_asset'].size
-        logger.debug('asset height and width: %s, %s', asset_height, asset_width)
+        image = processed_asset['image']
+        asset_width = processed_asset['original_width']
+        asset_height = processed_asset['original_height']
+
+        logger.debug('asset height and width: {}, {}'.format(asset_height, asset_width))
 
         # # point of pivot (asset centerpoint)
         pivot_x, pivot_y = processed_asset['pivot']
-        logger.debug('pivot point: %s %s', pivot_x, pivot_y)
+        logger.debug('pivot point: {} {}'.format(pivot_x, pivot_y))
 
         # # center of base
         center_x = base_width / 2
         center_y = base_height / 2
-        logger.debug('center point: %s, %s', center_x, center_y)
+        logger.debug('center point: {}, {}'.format(center_x, center_y))
 
         # dimensions for asset
         x = center_x - (asset_width / 2)
         y = center_y - (asset_height / 2)
-        logger.debug('top left point: %s, %s', x, y)
+        logger.debug('top left point: {}, {}'.format(x, y))
 
         # determine offset to reposition centered image after rotation
         x_shift = processed_asset['n_coordinates'][0] - x
         y_shift = processed_asset['n_coordinates'][1] - y
-        logger.debug('shifted point: %s %s', x_shift, y_shift)
+        logger.debug('shifted point: {} {}'.format(x_shift, y_shift))
 
         # calculate padding for canvas
         x_padding = abs(x_shift)
         y_padding = abs(y_shift)
-        logger.debug('Canvas padding: %s %s', x_padding, y_padding)
+        logger.debug('Canvas padding: {} {}'.format(x_padding, y_padding))
 
         # center image
-        centered = self.center(base, processed_asset)
+        image = self.center(base, image)
 
         # pad image
-        padded = ImageOps.expand(centered, border=(int(x_padding), int(y_padding)))
+        image = ImageOps.expand(image, border=(int(x_padding), int(y_padding)))
 
         # rotate image
-        logger.info('Rotating Asset')
-        rotated = padded.rotate(-processed_asset['rotation_value'])
+        logger.info('Rotating Asset by {}'.format(processed_asset['rotation_value']))
+        image = image.rotate(-processed_asset['rotation_value'])
+        self.preview(image)
 
         # reposition image using offset and reset asset in dictionary
-        logger.info('Re-Positioning asset')
-        processed_asset['asset'] = ImageChops.offset(rotated, int(x_shift), int(y_shift))
+        logger.info('Re-Positioning asset to: {}, {}'.format(int(x_shift), int(y_shift)))
+        image = ImageChops.offset(image, int(x_shift), int(y_shift))
 
         # crop bleed from offset
-        logger.info('Scaling asset')
-        cropped_asset = self.crop_from_center(processed_asset, base.size)
-        return cropped_asset
+        logger.info('Scaling asset by {}'.format(base.size))
+        image = self.crop_from_center(image, base.size)
+
+        return image
 
     #########################
     # PREFLIGHT METHODS
@@ -493,7 +509,7 @@ class Skribble:
     # check background to see if cropping or resizing is required
     def preflight_background(self, base, raw_asset):
         logger.info('Performing background preflight')
-        logger.debug('Background data:\n %s', pprint.pformat(raw_asset));
+        logger.debug('Background data:\n {}'.format(pprint.pformat(raw_asset)))
         # validate url, type, and generate asset
         if raw_asset is None:
             logger.warning('No background present, rendering white background')
@@ -502,9 +518,9 @@ class Skribble:
 
         processed_asset = dict()
         processed_asset['raw'] = raw_asset
-        processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
+        processed_asset['image'] = self.validate_and_get_asset(processed_asset['raw'])
 
-        self.background = self.transform_background(base, processed_asset)
+        self.background = self.transform_background(base, processed_asset['image'])
         logger.info('PASSED!')
 
     def preflight(self, asset_list):
@@ -525,19 +541,25 @@ class Skribble:
             processed_asset = dict()
             # store reference to original asset
 
+            # raw asset data from the skribble
             processed_asset['raw'] = asset
+
             # validate url, type, and generate asset
 
-            processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
+            # store the original asset
+            image = self.validate_and_get_asset(processed_asset['raw'])
+
+            # save the image that will be passed around
+            processed_asset['image'] = image
+
+            # get the original size of the asset
+            processed_asset['original_height'], processed_asset['original_width'] = image.size
 
             # get scale value
             processed_asset['scale_value'] = self.get_scale_value(processed_asset['raw'])
 
             # get rotation value
             processed_asset['rotation_value'] = self.get_rotation_value(processed_asset['raw'])
-
-            # resize asset
-            processed_asset['resized_asset'] = self.resize(processed_asset)
 
             # get coordinates
             processed_asset['coordinates'] = self.get_anchor_coordinates(processed_asset['raw'])
@@ -551,9 +573,10 @@ class Skribble:
             # calculate pivot for rotation
             processed_asset['pivot'] = self.get_rotation_pivot(processed_asset)
 
+
             processed_assets.append(processed_asset)
 
-            logger.debug('Asset passed Preflight:\n %s', pprint.pformat(processed_asset))
+            logger.debug('Asset passed Preflight:\n {}'.format(pprint.pformat(processed_asset)))
 
         logger.info('Checking collision')
         for asset in processed_assets:
@@ -625,52 +648,19 @@ class Skribble:
             self.preview(canvas)
 
 
-def handler(event):
+def handler(event, context):
     for record in event['Records']:
-        logger.info('Recieved SNS Message: \n %s', pprint.pformat(record))
-        message = json.loads(record['Sns']['Message'])
+        try:
+            logger.info('Recieved SNS Message: \n {}'.format(pprint.pformat(record)))
+            message = json.loads(record['Sns']['Message'])
+            message['preview'] = 0
+            Skribble(message)
+        except Exception as error:
+            logger.exception('Fatal error during skramble')
+
+
+def handle_cli(message):
+    try:
         Skribble(message)
-
-
-# initiate rollbar
-rollbar.init(config.rollbar_access_token, config.rollbar_env)  # access_token, environment
-
-# initiate logger
-logger = logging.getLogger('skribble')
-
-formatter = logging.Formatter('%(levelname)s\t - %(message)s')
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setFormatter(formatter)
-
-# report ERROR and above to Rollbar
-rollbar_handler = RollbarHandler()
-
-parser = argparse.ArgumentParser(description='Process a skribble', prog='skribble')
-
-parser.add_argument('skribble_id', help='Id of the skribble to process')
-parser.add_argument('user_id', help='User id for the user who created the skribble')
-
-parser.add_argument('--api', help='Api domain to call', default='https://api.changemyworldnow.com/')
-parser.add_argument('--verbose', help='Turn on verbose logging', action='store_true')
-parser.add_argument('--debug', help='Turn on debug logging', action='store_true')
-parser.add_argument('--preview', help='Preview the skribble locally', action='store_true')
-
-args = parser.parse_args()
-
-if args.verbose:
-    logger.setLevel(logging.INFO)
-
-if args.debug:
-    logger.setLevel(logging.DEBUG)
-
-logger.addHandler(console_handler)
-
-data = {
-    "skribble_id": args.skribble_id,
-    "skribble_url": '{}/user/{}/skribble/{}'.format(args.api, args.user_id, args.skribble_id),
-    "post_back": '{}/user/{}/skribble/{}/notice'.format(args.api, args.user_id, args.skribble_id),
-    "preview": args.preview
-}
-
-Skribble(data)
+    except Exception as error:
+        logger.exception('Fatal error during skramble')
