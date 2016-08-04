@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# Ths skribble process will take in the skribble json specification and create a flattened image. The process MUST
+# The skribble process will take in the skribble json specification and create a flattened image. The process MUST
 # accept in the id of the skribble to process. The skribble process MUST complete the following validataion
 # on the specification:
 
@@ -47,9 +46,10 @@ import hashlib  # encode and decode in sha1/md5/etc
 import rollbar  # rollbar integration
 import config  # config file
 import pprint  # pretty prints data
+from requests.auth import HTTPBasicAuth # allows basic HTTP Auth
 
 # initiate rollbar
-rollbar.init(config.rollbar_access_token, config.rollbar_env, locals={"timeout": 30})  # access_token, environment
+rollbar.init(config.rollbar_access_token, config.rollbar_env, timeout=30)  # access_token, environment
 
 # initiate logger
 logger = logging.getLogger('skribble')
@@ -88,6 +88,7 @@ class Skribble:
         self.layers = []
         self.render()
 
+
     #########################
     # HELPER METHODS
     #########################
@@ -105,7 +106,7 @@ class Skribble:
 
         raise Exception(
             'Invalid type for asset: {}, expected {}, instead saw {}'.format(raw_asset['media_id'], mime_type,
-                                                                             response.info()['Content-type']))
+            response.info()['Content-type']))
 
     # Validates the assets checksum by comparing it to the media server
     def validate_checksum(self, raw_asset, response):
@@ -132,8 +133,7 @@ class Skribble:
             return True
         else:
             raise Exception(
-                'Asset {} failed checksum validation! expected {} and calculated {}'.format(raw_asset['media_id'],
-                                                                                            expected_hash, hash_value))
+                'Asset {} failed checksum validation! expected {} and calculated {}'.format(raw_asset['media_id'], expected_hash, hash_value))
 
     # Fetches data from a url
     def url_response(self, url, redirect_count=0):
@@ -143,7 +143,7 @@ class Skribble:
 
         logger.debug('Downloading data from {}'.format(url))
 
-        response = requests.get(url, stream=True, timeout=30)
+        response = requests.get(url, stream=True, timeout=60, auth=HTTPBasicAuth(config.api_user, config.api_pass))
         logger.debug('Status Code: {}'.format(response.status_code))
 
         if response.status_code == 200:
@@ -173,7 +173,7 @@ class Skribble:
         data = json.dumps({'status': status})
 
         logger.debug('Submitting to {}\n with data: {}\n using headers: {}'.format(self.post_back, pprint.pformat(data),
-                                                                                   pprint.pformat(headers)))
+                     pprint.pformat(headers)))
 
         response = requests.post(self.post_back, data=data, headers=headers)
         # server response
@@ -231,18 +231,19 @@ class Skribble:
 
     # get an assets rotation if any
     def get_rotation_value(self, raw_asset):
-        rotation_value = float(raw_asset['state']['rotation']);
-        logger.debug('Rotation value: {}'.format(rotation_value))
-        return rotation_value
+        rotation_value_radians = float(raw_asset['state']['rotation'])
+        logger.debug('Rotation value in radians: {}'.format(rotation_value_radians))
+        rotation_value_degrees = rotation_value_radians * 57.2958
+        logger.info('Calculating rotation value in degrees...')
+        logger.debug('Rotation value in degrees: {}'.format(rotation_value_degrees))
+        return rotation_value_degrees
 
     # calculate all corners after asset is scaled
     def calculate_corners(self, processed_asset):
         corners = {}
 
         # dimensions
-        w = processed_asset['original_width']
-        h = processed_asset['original_height']
-
+        w, h = processed_asset['resized_asset'].size
         corners['top_left'] = processed_asset['n_coordinates']
         corners['top_right'] = ((processed_asset['n_coordinates'][0] + w), processed_asset['n_coordinates'][1])
         corners['bottom_right'] = (
@@ -265,7 +266,7 @@ class Skribble:
             #                 asset['raw']['media_id'])
 
             logger.debug('No collision detected between assets {}, {}'.format(base_asset['raw']['media_id'],
-                                                                              asset['raw']['media_id']))
+                         asset['raw']['media_id']))
 
     # validate an assets url and type
     def validate_and_get_asset(self, raw_asset):
@@ -290,7 +291,7 @@ class Skribble:
         logger.debug('Validated url, type, and checksum of {}'.format(media_data['media_id']))
 
         asset_file = self.string_buffer(response)
-        logger.info('Downloading image for {}'.format(media_data['media_id']))
+        logger.info('Fetching image for {}'.format(media_data['media_id']))
         return self.image(asset_file)
 
     # recalculate new coordinates after asset is scaled
@@ -299,14 +300,10 @@ class Skribble:
         logger.debug('Recalculating coordinates for asset: {} '.format(pprint.pformat(processed_asset)))
 
         # original dimensions
-        o_width = processed_asset['original_width']
-        o_height = processed_asset['original_height']
-
-        logger.debug(o_height)
-        logger.debug(o_width)
+        o_width, o_height = processed_asset['asset'].size
         # realized dimensions
 
-        r_width, r_height = processed_asset['image'].size
+        r_width, r_height = processed_asset['resized_asset'].size
 
         nx = processed_asset['raw']['state']['left']
         ny = processed_asset['raw']['state']['top']
@@ -321,7 +318,7 @@ class Skribble:
             nx = (processed_asset['coordinates'][0] + (width_difference / 2))
             ny = (processed_asset['coordinates'][1] + (height_difference / 2))
 
-        logger.debug('New Coordinates: {}, {}'.format(nx, ny))
+        logger.debug('New Coordinates: {}'.format(pprint.pformat([nx, ny])))
         return nx, ny
 
     # find the pivot point for the asset now that it has moved
@@ -329,11 +326,11 @@ class Skribble:
         logger.debug('Calculating rotation pivot point: '.format(pprint.pformat(processed_asset)))
 
         # calculate x coordinate of center
-        center_x = processed_asset['n_coordinates'][0] + (processed_asset['image'].size[0] / 2)
+        center_x = processed_asset['n_coordinates'][0] + (processed_asset['resized_asset'].size[0] / 2)
 
         # calculate y coordinate of center
-        center_y = processed_asset['n_coordinates'][1] + (processed_asset['image'].size[1] / 2)
-        logger.debug('Pivot Point: {}, {}'.format(center_x, center_y))
+        center_y = processed_asset['n_coordinates'][1] + (processed_asset['resized_asset'].size[1] / 2)
+        logger.debug('Pivot Point: {} '.format(pprint.pformat([center_x, center_y])))
         return center_x, center_y
 
     #########################
@@ -347,41 +344,39 @@ class Skribble:
         return base
 
     # resize an asset
-    def resize(self, image, scale_value):
+    def resize(self, processed_asset):
         # original width & height of asset
-        o_width = round((image.size[0]), 14)
-        o_height = round((image.size[1]), 14)
-        scale_value = float(scale_value)
+        o_width = round((processed_asset['asset'].size[0]), 14)
+        o_height = round((processed_asset['asset'].size[1]), 14)
+        scale_value = float(processed_asset['scale_value'])
 
         # resized width & height
         r_width = int(o_width * scale_value)
         r_height = int(o_height * scale_value)
 
         # resized asset
-        return image.resize((r_width, r_height), Image.ANTIALIAS)
+        logger.debug('Resized asset {}'.format(processed_asset['raw']['media_id']))
+        return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
 
     # center asset for rotation
-    def center(self, base, image):
+    def center(self, base, processed_asset):
         # dimensions for base
         base_width, base_height = base.size
-
         # center of base
         center_x = base_width / 2
         center_y = base_height / 2
-
         # dimensions for asset
-        asset_width, asset_height = image.size
+        asset_width, asset_height = processed_asset['resized_asset'].size
         x = center_x - (asset_width / 2)
         y = center_y - (asset_height / 2)
-
-        logger.debug('Centering asset to: {}, {}'.format(x, y))
-        return self.paste(base, image, (x, y))
+        logger.debug('Centered asset {}'.format(processed_asset['raw']['media_id']))
+        return self.paste(base, processed_asset['resized_asset'], (x, y))
 
     # crop asset from its center
-    def crop_from_center(self, image, proposed_size):
+    def crop_from_center(self, processed_asset, proposed_size):
 
         # img size
-        width, height = image.size
+        width, height = processed_asset['asset'].size
 
         # proposed dimensions
         proposed_width, proposed_height = proposed_size
@@ -393,13 +388,13 @@ class Skribble:
         bottom = proposed_height + top
 
         # crop asset from center
-        logger.debug('Cropped asset: {}, {}, {}, {}'.format(left, top, right, bottom))
-        return image.crop((left, top, right, bottom))
+        logger.debug('Cropped asset {}'.format(processed_asset['raw']['media_id']))
+        return processed_asset['asset'].crop((left, top, right, bottom))
 
     # resize asset to fit within proposed size
-    def resize_from_center(self, image, proposed_size):
+    def resize_from_center(self, processed_asset, proposed_size):
         # asset dimensions
-        width, height = image.size
+        width, height = processed_asset['asset'].size
 
         # proposed dimensions
         proposed_width, proposed_height = proposed_size
@@ -409,37 +404,38 @@ class Skribble:
         height_difference = proposed_height - height
 
         # if width requires scaling priority scale by proposed width
+        logger.debug('Resized asset {} from center'.format(processed_asset['raw']['media_id']))
+
         if width_difference > height_difference:
             r_width = proposed_width
             r_height = int((height * proposed_width) / width)
-        else:
-            r_height = proposed_height
-            r_width = int((width * proposed_height) / height)
+            return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
 
-        logger.debug('Resized asset to: {}, {}'.format(r_height, r_width))
-        return image.resize((r_width, r_height), Image.ANTIALIAS)
+        r_height = proposed_height
+        r_width = int((width * proposed_height) / height)
+        return processed_asset['asset'].resize((r_width, r_height), Image.ANTIALIAS)
 
     # format background
-    def transform_background(self, base, image):
+    def transform_background(self, base, processed_asset):
         logger.info('Transforming background')
 
         # if sizes are equal do nothing
-        if base.size == image.size:
-            return image
+        if base.size == processed_asset['asset'].size:
+            return processed_asset['asset']
 
         base_width, base_height = base.size
-        asset_width, asset_height = image.size
+        asset_width, asset_height = processed_asset['asset'].size
         # if either the width or height of the layer are smaller then the width or height of the
         # base resize the layer to cover the base area
 
         if asset_width < base_width | asset_height < base_height:
             # resize the layer
             logger.debug('Resizing background')
-            return self.resize_from_center(image, base.size)
+            return self.resize_from_center(processed_asset, base.size)
 
         # crop the larger layer from center to fit exactly within the base area
         logger.debug('Cropping background')
-        return self.crop_from_center(image, base.size)
+        return self.crop_from_center(processed_asset, base.size)
 
     def position_scale_rotate(self, processed_asset):
         logger.info('Positioning Asset')
@@ -451,10 +447,7 @@ class Skribble:
         logger.debug('base height and width: {}, {}'.format(base_width, base_height))
 
         # # dimensions for asset
-        image = processed_asset['image']
-        asset_width = processed_asset['original_width']
-        asset_height = processed_asset['original_height']
-
+        asset_width, asset_height = processed_asset['resized_asset'].size
         logger.debug('asset height and width: {}, {}'.format(asset_height, asset_width))
 
         # # point of pivot (asset centerpoint)
@@ -482,25 +475,20 @@ class Skribble:
         logger.debug('Canvas padding: {} {}'.format(x_padding, y_padding))
 
         # center image
-        image = self.center(base, image)
-
+        centered = self.center(base, processed_asset)
         # pad image
-        image = ImageOps.expand(image, border=(int(x_padding), int(y_padding)))
-
+        padded = ImageOps.expand(centered, border=(int(x_padding), int(y_padding)))
         # rotate image
-        logger.info('Rotating Asset by {}'.format(processed_asset['rotation_value']))
-        image = image.rotate(-processed_asset['rotation_value'])
-        self.preview(image)
-
+        logger.info('Rotating Asset')
+        rotated = padded.rotate(-processed_asset['rotation_value'])
         # reposition image using offset and reset asset in dictionary
-        logger.info('Re-Positioning asset to: {}, {}'.format(int(x_shift), int(y_shift)))
-        image = ImageChops.offset(image, int(x_shift), int(y_shift))
+        logger.info('Re-Positioning asset')
+        processed_asset['asset'] = ImageChops.offset(rotated, int(x_shift), int(y_shift))
 
         # crop bleed from offset
-        logger.info('Scaling asset by {}'.format(base.size))
-        image = self.crop_from_center(image, base.size)
-
-        return image
+        logger.info('Scaling asset')
+        cropped_asset = self.crop_from_center(processed_asset, base.size)
+        return cropped_asset
 
     #########################
     # PREFLIGHT METHODS
@@ -518,9 +506,9 @@ class Skribble:
 
         processed_asset = dict()
         processed_asset['raw'] = raw_asset
-        processed_asset['image'] = self.validate_and_get_asset(processed_asset['raw'])
+        processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
 
-        self.background = self.transform_background(base, processed_asset['image'])
+        self.background = self.transform_background(base, processed_asset)
         logger.info('PASSED!')
 
     def preflight(self, asset_list):
@@ -541,25 +529,19 @@ class Skribble:
             processed_asset = dict()
             # store reference to original asset
 
-            # raw asset data from the skribble
             processed_asset['raw'] = asset
-
             # validate url, type, and generate asset
 
-            # store the original asset
-            image = self.validate_and_get_asset(processed_asset['raw'])
-
-            # save the image that will be passed around
-            processed_asset['image'] = image
-
-            # get the original size of the asset
-            processed_asset['original_height'], processed_asset['original_width'] = image.size
+            processed_asset['asset'] = self.validate_and_get_asset(processed_asset['raw'])
 
             # get scale value
             processed_asset['scale_value'] = self.get_scale_value(processed_asset['raw'])
 
             # get rotation value
             processed_asset['rotation_value'] = self.get_rotation_value(processed_asset['raw'])
+
+            # resize asset
+            processed_asset['resized_asset'] = self.resize(processed_asset)
 
             # get coordinates
             processed_asset['coordinates'] = self.get_anchor_coordinates(processed_asset['raw'])
@@ -572,7 +554,6 @@ class Skribble:
 
             # calculate pivot for rotation
             processed_asset['pivot'] = self.get_rotation_pivot(processed_asset)
-
 
             processed_assets.append(processed_asset)
 
@@ -618,10 +599,12 @@ class Skribble:
             self.preflight_background(canvas, self.background_asset)
             self.preflight_items(self.item_assets)
             self.preflight_messages(self.message_assets)
+            print('SUCCESS ON PREFLIGHTS')
         except Exception as error:
             # catch-all
             logger.exception(error)
-            self.report_to_api('error')
+            print('EXCEPTION RAISED ON PREFLIGHTS')
+            # self.report_to_api('error')
             return
 
         try:
@@ -637,7 +620,9 @@ class Skribble:
             # upload skribble to s3
             self.upload_skribble_to_s3(string_buffer)
             self.report_to_api('success')
+            print('SUCCESS ON UPLOAD')
         except Exception as error:
+            print('EXCEPTION RAISED ON UPLOAD TO S3')
             # catch-all
             logger.exception(error)
             self.report_to_api('error')
@@ -663,4 +648,4 @@ def handle_cli(message):
     try:
         Skribble(message)
     except Exception as error:
-        logger.exception('Fatal error during skramble')
+        logger.exception('Fatal error during skramble manchuck')
