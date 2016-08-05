@@ -3,3 +3,4 @@ rollbar_env = 'skribble_dev'
 aws_s3_bucket = 'cmwn-skribble'
 api_user = 'lambda'
 api_pass = 'enter password'
+verify_ssl = True

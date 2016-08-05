@@ -46,7 +46,7 @@ import hashlib  # encode and decode in sha1/md5/etc
 import rollbar  # rollbar integration
 import config  # config file
 import pprint  # pretty prints data
-from requests.auth import HTTPBasicAuth # allows basic HTTP Auth
+from requests.auth import HTTPBasicAuth  # allows basic HTTP Auth
 
 # initiate rollbar
 rollbar.init(config.rollbar_access_token, config.rollbar_env, timeout=30)  # access_token, environment
@@ -88,7 +88,6 @@ class Skribble:
         self.layers = []
         self.render()
 
-
     #########################
     # HELPER METHODS
     #########################
@@ -106,7 +105,7 @@ class Skribble:
 
         raise Exception(
             'Invalid type for asset: {}, expected {}, instead saw {}'.format(raw_asset['media_id'], mime_type,
-            response.info()['Content-type']))
+                                                                             response.info()['Content-type']))
 
     # Validates the assets checksum by comparing it to the media server
     def validate_checksum(self, raw_asset, response):
@@ -133,7 +132,8 @@ class Skribble:
             return True
         else:
             raise Exception(
-                'Asset {} failed checksum validation! expected {} and calculated {}'.format(raw_asset['media_id'], expected_hash, hash_value))
+                'Asset {} failed checksum validation! expected {} and calculated {}'.format(raw_asset['media_id'],
+                                                                                            expected_hash, hash_value))
 
     # Fetches data from a url
     def url_response(self, url, redirect_count=0):
@@ -143,7 +143,8 @@ class Skribble:
 
         logger.debug('Downloading data from {}'.format(url))
 
-        response = requests.get(url, stream=True, timeout=60, auth=HTTPBasicAuth(config.api_user, config.api_pass))
+        response = requests.get(url, stream=True, timeout=60, auth=HTTPBasicAuth(config.api_user, config.api_pass),
+                                verify=config.verify_ssl)
         logger.debug('Status Code: {}'.format(response.status_code))
 
         if response.status_code == 200:
@@ -173,16 +174,17 @@ class Skribble:
         data = json.dumps({'status': status})
 
         logger.debug('Submitting to {}\n with data: {}\n using headers: {}'.format(self.post_back, pprint.pformat(data),
-                     pprint.pformat(headers)))
+                                                                                   pprint.pformat(headers)))
 
-        response = requests.post(self.post_back, data=data, headers=headers)
+        response = requests.post(self.post_back, data=data, headers=headers,
+                                 auth=HTTPBasicAuth(config.api_user, config.api_pass), verify=config.verify_ssl)
         # server response
 
         if response.status_code != 201:
             logger.debug(response.content)
             raise Exception(
-                'Unexpected response code from API, expected 201, saw {}, body:'.format(response.status_code,
-                                                                                        response.content))
+                'Unexpected response code from API, expected 201, saw {}, body: {}'.format(response.status_code,
+                                                                                           response.content))
 
         logger.debug('Successfully submitted status {}'.format(self.skribble_json['skribble_id']))
 
@@ -266,7 +268,7 @@ class Skribble:
             #                 asset['raw']['media_id'])
 
             logger.debug('No collision detected between assets {}, {}'.format(base_asset['raw']['media_id'],
-                         asset['raw']['media_id']))
+                                                                              asset['raw']['media_id']))
 
     # validate an assets url and type
     def validate_and_get_asset(self, raw_asset):
@@ -599,11 +601,9 @@ class Skribble:
             self.preflight_background(canvas, self.background_asset)
             self.preflight_items(self.item_assets)
             self.preflight_messages(self.message_assets)
-            print('SUCCESS ON PREFLIGHTS')
         except Exception as error:
             # catch-all
             logger.exception(error)
-            print('EXCEPTION RAISED ON PREFLIGHTS')
             # self.report_to_api('error')
             return
 
@@ -620,9 +620,7 @@ class Skribble:
             # upload skribble to s3
             self.upload_skribble_to_s3(string_buffer)
             self.report_to_api('success')
-            print('SUCCESS ON UPLOAD')
         except Exception as error:
-            print('EXCEPTION RAISED ON UPLOAD TO S3')
             # catch-all
             logger.exception(error)
             self.report_to_api('error')
