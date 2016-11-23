@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+Allows processing a skribble from the command line
+"""
 
 from skribble_service import handle_cli, logger, logging
 import sys

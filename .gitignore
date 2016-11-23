@@ -90,3 +90,6 @@ ENV/
 
 # config file
 config.py
+/test/.cache/
+
+skramble.cfg
