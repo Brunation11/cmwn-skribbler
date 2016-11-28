@@ -46,21 +46,35 @@ import hashlib  # encode and decode in sha1/md5/etc
 import rollbar  # rollbar integration
 import config  # config file
 import pprint  # pretty prints data
+import sys
 from requests.auth import HTTPBasicAuth  # allows basic HTTP Auth
 
 # initiate rollbar
-rollbar.init(config.rollbar_access_token, config.rollbar_env, timeout=30)  # access_token, environment
-
-# initiate logger
-logger = logging.getLogger('skribble')
+rollbar.init(
+    config.rollbar_access_token,
+    config.rollbar_env,
+    timeout=30)
 
 # report ERROR and above to Rollbar
 rollbar_handler = RollbarHandler()
 rollbar_handler.setLevel(logging.INFO)
 
-logger.addHandler(rollbar_handler)
+real = logging.getLogger(__name__)
+real.setLevel(logging.INFO)
+real.addHandler(rollbar_handler)
 
-logger.setLevel(logging.DEBUG)
+
+class SkribbleAdapter(logging.LoggerAdapter):
+    """
+    Custom adapter to put the skribble id into the logger
+    """
+    skribble_id = None
+
+    def process(self, msg, kwargs):
+        return 'Skribble [%s] %s' % (self.skribble_id, msg), kwargs
+
+
+logger = SkribbleAdapter(real, {})
 
 
 class Skribble:
@@ -69,10 +83,12 @@ class Skribble:
         logger.info('Received skribble:\n{}'.format(pprint.pformat(event)))
 
         self.skribble_id = event['skribble_id']
+        logger.skribble_id = self.skribble_id
+
         self.url = event['skribble_url']
         self.post_back = event['post_back']
         self.show_preview = event['preview']
-        self.media_url_base = 'https://media.changemyworldnow.com/a/{}'
+        self.media_url_base = event['media_url'] + '/{}'
 
         logger.debug('Downloading skribble data from: {}'.format(self.url))
 
@@ -638,12 +654,12 @@ def handler(event, context):
             message = json.loads(record['Sns']['Message'])
             message['preview'] = 0
             Skribble(message)
-        except Exception as error:
-            logger.exception('Fatal error during skramble')
+        except:
+            logger.exception('Fatal error during skramble: %s' % sys.exc_info()[0])
 
 
 def handle_cli(message):
     try:
         Skribble(message)
     except Exception as error:
-        logger.exception('Fatal error during skramble manchuck')
+        logger.exception(error)
