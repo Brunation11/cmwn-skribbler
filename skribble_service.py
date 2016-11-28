@@ -63,6 +63,7 @@ real = logging.getLogger(__name__)
 real.setLevel(logging.INFO)
 real.addHandler(rollbar_handler)
 
+print(config.media_base_url)
 
 class SkribbleAdapter(logging.LoggerAdapter):
     """
@@ -125,6 +126,10 @@ class Skribble:
 
     # Validates the assets checksum by comparing it to the media server
     def validate_checksum(self, raw_asset, response):
+        if config.verify_hash is False:
+            logger.debug('Not validating hash')
+            return True
+
         logger.debug('Validating checksum of asset: {}'.format(raw_asset['media_id']))
 
         # verify check type
@@ -653,6 +658,7 @@ def handler(event, context):
             logger.info('Recieved SNS Message: \n {}'.format(pprint.pformat(record)))
             message = json.loads(record['Sns']['Message'])
             message['preview'] = 0
+            message['media_url'] = config.media_base_url
             Skribble(message)
         except:
             logger.exception('Fatal error during skramble: %s' % sys.exc_info()[0])
