@@ -641,9 +641,9 @@ class Skribble:
             # upload skribble to s3
             self.upload_skribble_to_s3(string_buffer)
             self.report_to_api('success')
-        except Exception as error:
+        except:
             # catch-all
-            logger.exception(error)
+            logger.exception('Fatal error during skramble (in Render): %s' % sys.exc_info()[0])
             self.report_to_api('error')
             return
 
