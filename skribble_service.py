@@ -46,47 +46,71 @@ import hashlib  # encode and decode in sha1/md5/etc
 import rollbar  # rollbar integration
 import config  # config file
 import pprint  # pretty prints data
+import sys
 from requests.auth import HTTPBasicAuth  # allows basic HTTP Auth
 
 # initiate rollbar
-rollbar.init(config.rollbar_access_token, config.rollbar_env, timeout=30)  # access_token, environment
-
-# initiate logger
-logger = logging.getLogger('skribble')
+rollbar.init(
+    config.rollbar_access_token,
+    config.rollbar_env,
+    timeout=30)
 
 # report ERROR and above to Rollbar
 rollbar_handler = RollbarHandler()
 rollbar_handler.setLevel(logging.INFO)
 
-logger.addHandler(rollbar_handler)
+real = logging.getLogger(__name__)
+real.setLevel(logging.WARN)
+real.addHandler(rollbar_handler)
 
-logger.setLevel(logging.DEBUG)
+print(config.media_base_url)
+
+
+class SkribbleAdapter(logging.LoggerAdapter):
+    """
+    Custom adapter to put the skribble id into the logger
+    """
+    skribble_id = None
+
+    def process(self, msg, kwargs):
+        return 'Skribble [%s] %s' % (self.skribble_id, msg), kwargs
+
+
+logger = SkribbleAdapter(real, {})
 
 
 class Skribble:
     # init instance by extracting background, items, and messages
     def __init__(self, event):
-        logger.info('Received skribble:\n{}'.format(pprint.pformat(event)))
+        try:
+            logger.info('Received skribble:\n{}'.format(pprint.pformat(event)))
 
-        self.skribble_id = event['skribble_id']
-        self.url = event['skribble_url']
-        self.post_back = event['post_back']
-        self.show_preview = event['preview']
-        self.media_url_base = 'https://media.changemyworldnow.com/a/{}'
+            self.skribble_id = event['skribble_id']
+            logger.skribble_id = self.skribble_id
 
-        logger.debug('Downloading skribble data from: {}'.format(self.url))
+            self.url = event['skribble_url']
+            self.post_back = event['post_back']
+            self.show_preview = event['preview']
+            self.media_url_base = event['media_url'] + '/{}'
 
-        skribble_response = self.url_response(self.url)
-        logger.debug('Received skribble data:\n{}'.format(pprint.pformat(skribble_response)))
+            logger.debug('Downloading skribble data from: {}'.format(self.url))
 
-        self.skribble_json = skribble_response.json()
+            skribble_response = self.url_response(self.url)
+            logger.debug('Received skribble data:\n{}'.format(pprint.pformat(skribble_response)))
 
-        self.background_asset = self.skribble_json['rules']['background']
-        self.item_assets = self.skribble_json['rules']['items']
-        self.message_assets = self.skribble_json['rules']['messages']
-        self.background = None
-        self.layers = []
-        self.render()
+            self.skribble_json = skribble_response.json()
+
+            self.background_asset = self.skribble_json['rules']['background']
+            self.item_assets = self.skribble_json['rules']['items']
+            self.message_assets = self.skribble_json['rules']['messages']
+            self.background = None
+            self.layers = []
+            self.render()
+        except:
+            # catch-all
+            logger.exception('Fatal error during skramble:')
+            self.report_to_api('error')
+            return
 
     #########################
     # HELPER METHODS
@@ -109,6 +133,10 @@ class Skribble:
 
     # Validates the assets checksum by comparing it to the media server
     def validate_checksum(self, raw_asset, response):
+        if config.verify_hash is False:
+            logger.debug('Not validating hash')
+            return True
+
         logger.debug('Validating checksum of asset: {}'.format(raw_asset['media_id']))
 
         # verify check type
@@ -183,8 +211,9 @@ class Skribble:
         if response.status_code != 201:
             logger.debug(response.content)
             raise Exception(
-                'Unexpected response code from API, expected 201, saw {}, body: {}'.format(response.status_code,
-                                                                                           response.content))
+                'Unexpected response code from API: {}, expected 201, saw {}, body: {}'.format(self.post_back,
+                                                                                               response.status_code,
+                                                                                               response.content))
 
         logger.debug('Successfully submitted status {}'.format(self.skribble_json['skribble_id']))
 
@@ -596,35 +625,23 @@ class Skribble:
 
     # render skribble
     def render(self):
-        try:
-            canvas = self.render_canvas()
-            self.preflight_background(canvas, self.background_asset)
-            self.preflight_items(self.item_assets)
-            self.preflight_messages(self.message_assets)
-        except Exception as error:
-            # catch-all
-            logger.exception(error)
-            # self.report_to_api('error')
-            return
+        canvas = self.render_canvas()
+        self.preflight_background(canvas, self.background_asset)
+        self.preflight_items(self.item_assets)
+        self.preflight_messages(self.message_assets)
 
-        try:
-            logger.info('RENDERING SKRIBBLE')
-            canvas = Image.alpha_composite(canvas, self.background)
+        logger.info('RENDERING SKRIBBLE')
+        canvas = Image.alpha_composite(canvas, self.background)
 
-            logger.debug('Merging layers')
-            for layer in self.layers:
-                canvas = Image.alpha_composite(canvas, layer)
-            logger.info('Writing to file')
-            string_buffer = cStringIO.StringIO()
-            canvas.save(string_buffer, 'PNG')
-            # upload skribble to s3
-            self.upload_skribble_to_s3(string_buffer)
-            self.report_to_api('success')
-        except Exception as error:
-            # catch-all
-            logger.exception(error)
-            self.report_to_api('error')
-            return
+        logger.debug('Merging layers')
+        for layer in self.layers:
+            canvas = Image.alpha_composite(canvas, layer)
+        logger.info('Writing to file')
+        string_buffer = cStringIO.StringIO()
+        canvas.save(string_buffer, 'PNG')
+        # upload skribble to s3
+        self.upload_skribble_to_s3(string_buffer)
+        self.report_to_api('success')
 
         if self.show_preview:
             logger.info('Opening preview')
@@ -637,13 +654,14 @@ def handler(event, context):
             logger.info('Recieved SNS Message: \n {}'.format(pprint.pformat(record)))
             message = json.loads(record['Sns']['Message'])
             message['preview'] = 0
+            message['media_url'] = config.media_base_url
             Skribble(message)
-        except Exception as error:
-            logger.exception('Fatal error during skramble')
+        except:
+            logger.exception('Fatal error during skramble (this error cannot update skribble status)')
 
 
 def handle_cli(message):
     try:
         Skribble(message)
     except Exception as error:
-        logger.exception('Fatal error during skramble manchuck')
+        logger.exception(error)

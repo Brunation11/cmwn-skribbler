@@ -4,3 +4,5 @@ aws_s3_bucket = 'cmwn-skribble'
 api_user = 'lambda'
 api_pass = 'enter password'
 verify_ssl = True
+verify_hash = False
+media_base_url = 'https://media.changemyworldnow.com'
