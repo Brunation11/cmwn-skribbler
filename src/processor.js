@@ -1,17 +1,18 @@
 'use strict';
+const logger = require('./logger.js').logger;
 const _           = require('lodash');
 const Asset       = require('./asset').Asset;
 const utils       = require('skribble-utils');
 const skribbleApi = require('./api/api');
 const MediaApi    = require('./api/media');
 const Images      = require('./image.js');
-// require('request').debug = true;
+const jimp        = require('jimp');
 
 /**
  * Builds a asset object from the skribble json spec
  *
  * can_overlap, corners, height and width will all be filled with default values
- * the media Api will have to populate those items
+ * the media Api will populate those items
  *
  * @param {Array|Object} skribbleJson
  * @param {Number} layerMul keeps all the assets sequential in the layering
@@ -20,7 +21,7 @@ const Images      = require('./image.js');
  */
 function grabAssets(skribbleJson, layerMul) {
     return _.map(skribbleJson, ((assetData, assetIdx) => {
-        console.log('Mapping asset with data');
+        logger.log('info','Mapping asset with data');
         assetData = _.defaults(assetData, {state: {left: 0, top: 0, scale: 0, layer: 0}});
         return new Asset(
             assetData.media_id,
@@ -35,16 +36,24 @@ function grabAssets(skribbleJson, layerMul) {
 }
 
 module.exports = {
+    /**
+     * Processes the skribble
+     *
+     * @param id
+     * @param url
+     * @param postBack
+     * @returns {Promise}
+     */
     skribbleProcessor: (id, url, postBack) => {
         return new Promise((resolve, reject) => {
             if (_.isEmpty(id) ||_.isEmpty(url) || _.isEmpty(postBack)) {
                 return reject(Error('Missing required parameters to process'));
             }
 
-            console.info('Processing skribble:', id);
+            logger.info('Processing skribble:', id);
             return skribbleApi.fetchSkribbleData(url, resolve, reject)
                 .then(skribbleJson => {
-                    // build list of all assets specs
+                    logger.log('info','Building asset list');
                     let assetSpecs = [];
                     assetSpecs.push(grabAssets([skribbleJson.rules.background], 1));
                     assetSpecs.push(grabAssets(skribbleJson.rules.items, 2));
@@ -53,7 +62,7 @@ module.exports = {
                     return _.flatten(assetSpecs);
                 })
                 .then(assets => {
-                    console.log('Fetching asset data');
+                    logger.log('info', 'Fetching asset data from media API');
                     let assetPromises = _.map(assets, (asset) => {
                         return MediaApi.fetchAssetData(asset, resolve, reject);
                     });
@@ -61,41 +70,16 @@ module.exports = {
                     return Promise.all(assetPromises);
                 })
                 .then(assets => {
-                    console.log('Downloading assets from media server');
+                    logger.log('info', 'Downloading assets from media server');
                     let assetPromises = _.map(assets, (asset) => {
                         return MediaApi.downloadAsset(asset, resolve, reject);
                     });
 
                     return Promise.all(assetPromises);
                 })
+
                 .then(assets => {
-                    console.log('Adding corners');
-
-                    assets       = _.map(assets, (asset) => {
-                        asset.corners = utils.getAssetCorners(asset);
-                        return asset;
-                    });
-
-                    return assets;
-                }).then(assets => {
-                    console.log('Checking collision');
-                    let assetsOk = true;
-                    _.each(assets, (asset) => {
-                        if (utils.checkItem(assets, asset)) {
-                            console.log('Asset is colliding:', asset.asset_id);
-                            assetsOk = false;
-                        }
-                    });
-
-                    if (!assetsOk) {
-                        console.log('Assets are colliding');
-                        throw Error('Assets are colliding');
-                    }
-
-                    return assets;
-                })
-                .then(assets => {
-                    console.log('Done downloading assets');
+                    logger.log('info', 'Processing assets');
                     let imagePromises = _.map(assets, (asset) => {
                         return Images.processImage(asset, resolve, reject);
                     });
@@ -104,7 +88,25 @@ module.exports = {
                     return Promise.all(imagePromises);
                 })
                 .then(assets => {
-                    console.log('Merging assets');
+                    logger.log('info', 'Checking collision');
+                    let assetsOk = true;
+                    _.each(assets, (asset) => {
+                        if (utils.checkItem(assets, asset)) {
+                            logger.log('info','Asset is colliding:', asset.asset_id);
+                            assetsOk = false;
+                        }
+                    });
+
+                    if (!assetsOk) {
+                        throw Error('Assets are colliding');
+                    }
+
+                    logger.log('debug', 'Assets are fine');
+
+                    return assets;
+                })
+                .then(assets => {
+                    logger.log('info','Merging assets');
                     assets = _.sortBy(assets, ['layer']);
                     const baseAsset = assets[0];
                     _.each(assets, (asset) => {
@@ -115,12 +117,22 @@ module.exports = {
                         Images.placeImage(asset, baseAsset);
                     });
 
-                    baseAsset.img.write('./complete.png');
+                    return baseAsset;
+                })
+                .then(completeAsset => {
+                    logger.log('info', 'Making web safe');
+                    completeAsset.img = completeAsset.img.rgba(false)
+                        .filterType(jimp.PNG_FILTER_AVERAGE)
+                        .deflateLevel(9)
+                        .deflateStrategy(3)
+                        .write('./complete.png');
+
+                    return completeAsset;
                 })
                 .catch(err => {
-                    console.error('Failure during skramble');
+                    logger.error('Failure during skramble:', err);
                     skribbleApi.reportError(postBack);
-                    console.error(err);
+                    logger.error(err);
                     throw err;
                 });
         });

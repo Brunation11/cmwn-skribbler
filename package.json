@@ -21,7 +21,9 @@
     "lodash": "^4.17.4",
     "request": "^2.79.0",
     "rollbar": "^0.6.3",
-    "skribble-utils": "ginasink/skribble-utils.git#7213f12ee699ae75d80981d297ba992648aef56b"
+    "skribble-utils": "ginasink/skribble-utils.git#7213f12ee699ae75d80981d297ba992648aef56b",
+    "winston": "^2.3.1",
+    "winston-rollbar": "^0.2.0"
   },
   "devDependencies": {
     "chai": "^3.5.0",
