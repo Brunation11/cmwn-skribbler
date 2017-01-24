@@ -7,6 +7,7 @@ const skribbleApi = require('./api/api');
 const MediaApi    = require('./api/media');
 const Images      = require('./image.js');
 const jimp        = require('jimp');
+const aws         = require('./aws.js');
 
 /**
  * Builds a asset object from the skribble json spec
@@ -124,10 +125,19 @@ module.exports = {
                     completeAsset.img = completeAsset.img.rgba(false)
                         .filterType(jimp.PNG_FILTER_AVERAGE)
                         .deflateLevel(9)
-                        .deflateStrategy(3)
-                        .write('./complete.png');
+                        .deflateStrategy(3);
 
                     return completeAsset;
+                })
+                .then(completeAsset => {
+                    logger.log('info', 'Uploading file to s3');
+                    completeAsset.asset_id = id;
+                    aws.uploadAsset(completeAsset);
+                    return completeAsset;
+                })
+                .then(completeAsset => {
+                    logger.log('info', 'Reporting success to api');
+                    skribbleApi.reportSuccess(postBack);
                 })
                 .catch(err => {
                     logger.error('Failure during skramble:', err);

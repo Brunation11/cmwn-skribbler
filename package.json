@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/ginasink/cmwn-skribbler#readme",
   "dependencies": {
+    "aws-sdk": "^2.7.27",
     "jimp": "^0.2.27",
     "lodash": "^4.17.4",
     "request": "^2.79.0",
