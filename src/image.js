@@ -1,11 +1,10 @@
-'use strict';
-const logger = require('./logger.js').logger;
-const _           = require('lodash');
-const Asset       = require('./asset').Asset;
-const utils       = require('skribble-utils');
-const jimp        = require('jimp');
-const imageWidth  = 1280;
-const imageHeight = 720;
+var logger = require('./logger.js').logger;
+var _           = require('lodash');
+var Asset       = require('./asset').Asset;
+var utils       = require('skribble-utils');
+var jimp        = require('jimp');
+var imageWidth  = 1280;
+var imageHeight = 720;
 
 /**
  * Rotates the image in the asset
@@ -13,9 +12,9 @@ const imageHeight = 720;
  * @param asset
  * @returns {*}
  */
-const rotateImage = (asset) => {
-    const radians = asset.rotation;
-    const degrees = radians * (180 / Math.PI);
+var rotateImage = function(asset) {
+    var radians = asset.rotation;
+    var degrees = radians * (180 / Math.PI);
 
     logger.log('debug','Scale image degrees:', asset.asset_id, asset.rotation, degrees);
     asset.img = asset.img.rotate(degrees, false);
@@ -28,14 +27,14 @@ const rotateImage = (asset) => {
  * @param asset
  * @returns {*}
  */
-const resizeImage = (asset) => {
-    const assetWidth  = asset.img.bitmap.width;
-    const assetHeight = asset.img.bitmap.height;
-    const widthDiff   = imageWidth - assetWidth;
-    const heightDiff  = imageHeight - assetHeight;
+var resizeImage = function(asset) {
+    var assetWidth  = asset.img.bitmap.width;
+    var assetHeight = asset.img.bitmap.height;
+    var widthDiff   = imageWidth - assetWidth;
+    var heightDiff  = imageHeight - assetHeight;
 
-    let newWidth     = imageWidth;
-    let newHeight    = imageHeight;
+    var newWidth     = imageWidth;
+    var newHeight    = imageHeight;
 
     logger.log('debug','Resize background',
                 '(h, w)', assetWidth, assetHeight,
@@ -59,14 +58,14 @@ const resizeImage = (asset) => {
  * @param asset
  * @returns {*}
  */
-const cropImage = (asset) => {
-    const assetWidth  = asset.img.bitmap.width;
-    const assetHeight = asset.img.bitmap.height;
+var cropImage = function(asset) {
+    var assetWidth  = asset.img.bitmap.width;
+    var assetHeight = asset.img.bitmap.height;
 
-    const left = Math.round((assetWidth - imageWidth) / 2);
-    const top = Math.round((assetHeight - imageHeight) / 2);
-    const right = imageWidth + left;
-    const bottom = imageHeight + top;
+    var left = Math.round((assetWidth - imageWidth) / 2);
+    var top = Math.round((assetHeight - imageHeight) / 2);
+    var right = imageWidth + left;
+    var bottom = imageHeight + top;
 
     logger.log('debug','Cropping background:',
             '(h , w)', assetHeight, assetHeight,
@@ -84,7 +83,7 @@ const cropImage = (asset) => {
  *
  * @param asset
  */
-const processBackground = (asset) => {
+var processBackground = function(asset) {
     if (asset.width < imageWidth || asset.height < imageHeight) {
         return resizeImage(asset);
     }
@@ -98,12 +97,12 @@ const processBackground = (asset) => {
  * @param asset
  * @returns {*}
  */
-const scaleImage = (asset) => {
-    const scale          = parseFloat(asset.scale);
-    const originalWidth  = asset.width;
-    const originalHeight = asset.height;
-    let newWidth         = originalWidth;
-    let newHeight        = originalHeight;
+var scaleImage = function(asset) {
+    var scale          = parseFloat(asset.scale);
+    var originalWidth  = asset.width;
+    var originalHeight = asset.height;
+    var newWidth         = originalWidth;
+    var newHeight        = originalHeight;
     logger.log('debug', 'Scale Image:', asset.asset_id,
                 'asset.scale', asset.scale,
                 'local scale', scale,
@@ -126,10 +125,10 @@ const scaleImage = (asset) => {
                     'original (h, w)', originalHeight, originalWidth,
                     'new (h, w)', newHeight, newWidth);
 
-        const widthDiff  = originalWidth - newWidth;
-        const heightDiff = originalWidth - newHeight;
-        const newLeft    = parseFloat(asset.left) + (widthDiff / 2);
-        const newTop     = parseFloat(asset.top) + (heightDiff / 2);
+        var widthDiff  = originalWidth - newWidth;
+        var heightDiff = originalWidth - newHeight;
+        var newLeft    = parseFloat(asset.left) + (widthDiff / 2);
+        var newTop     = parseFloat(asset.top) + (heightDiff / 2);
 
         logger.log('debug','New Position:', asset.asset_id,
                     'diff:', heightDiff, widthDiff,
@@ -150,9 +149,9 @@ module.exports = {
      * @param baseAsset
      * @returns {this}
      */
-    placeImage: (asset, baseAsset) => {
-        const x = parseFloat(asset.left || 0);
-        const y = parseFloat(asset.top || 0);
+    placeImage: function(asset, baseAsset) {
+        var x = parseFloat(asset.left || 0);
+        var y = parseFloat(asset.top || 0);
 
         return baseAsset.img.composite(asset.img, x, y);
     },
@@ -164,10 +163,10 @@ module.exports = {
      * @param reject
      * @returns {Promise.<TResult>}
      */
-    getBaseImage: (resolve, reject) => {
-        const asset = new Asset();
+    getBaseImage: function(resolve, reject) {
+        var asset = new Asset();
         return jimp.read('blank.png')
-            .then(img => {
+            .then(function(img) {
                 asset.img    = img;
                 asset.layer  = -1;
                 asset.height = img.bitmap.height;
@@ -175,7 +174,7 @@ module.exports = {
                 resolve(asset);
                 return asset;
             })
-            .catch(err => {
+            .catch(function(err) {
                 logger.error('Failed to open blank image:', err);
                 reject(err);
                 throw err;
@@ -201,24 +200,24 @@ module.exports = {
             imgResolve(asset);
             return asset;
         })
-            .then(asset => {
+            .then(function(asset) {
                 return scaleImage(asset);
             })
-            .then(asset => {
+            .then(function(asset) {
                 return rotateImage(asset);
             })
-            .then(asset => {
+            .then(function(asset) {
                 logger.log('verbose','Adding corners:', asset.asset_id);
 
                 asset.corners = utils.getAssetCorners(asset);
                 return asset;
             })
-            .then(asset => {
+            .then(function(asset) {
                 logger.log('verbose','Done Processing asset', asset.asset_id);
                 resolve(asset);
                 return asset;
             })
-            .catch(err => {
+            .catch(function(err) {
                 logger.error('Error processing asset:', asset.asset_id, 'reason', err);
                 reject(err);
                 throw err;

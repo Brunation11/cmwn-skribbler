@@ -1,13 +1,11 @@
-'use strict';
+var winston    = require('winston');
+var rollbar    = require('winston-rollbar').Rollbar;
+var fs         = require('fs');
+var path       = require('path');
+var configFile = path.resolve(__dirname, '../config.json');
+var config     = JSON.parse(fs.readFileSync(configFile, 'utf8')).rollbar;
 
-const winston    = require('winston');
-const rollbar    = require('winston-rollbar').Rollbar;
-const fs         = require('fs');
-const path       = require('path');
-const configFile = path.resolve(__dirname, '../config.json');
-const config     = JSON.parse(fs.readFileSync(configFile, 'utf8')).rollbar;
-
-const logger = new (winston.Logger)({
+var logger = new (winston.Logger)({
     exitOnError: false,
     transports: [
         new (winston.transports.Console)({

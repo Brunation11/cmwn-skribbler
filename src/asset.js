@@ -1,5 +1,4 @@
-'use strict';
-const _     = require('lodash');
+var _     = require('lodash');
 
 /**
  * A Specification of an asset
@@ -19,7 +18,7 @@ const _     = require('lodash');
  * @param {String} hash_value
  * @param {Object} img
  */
-let Asset = function(
+var Asset = function(
     asset_id,
     asset_src,
     left,

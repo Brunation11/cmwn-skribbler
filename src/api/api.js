@@ -1,12 +1,11 @@
-'use strict';
-const logger = require('../logger.js').logger;
-const request        = require('request');
-const _              = require('lodash');
-const fs             = require('fs');
-const path           = require('path');
-const configFile     = path.resolve(__dirname, '../../config.json');
-const config         = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-const CmwnApiRequest = request.defaults({
+var logger = require('../logger.js').logger;
+var request        = require('request');
+var _              = require('lodash');
+var fs             = require('fs');
+var path           = require('path');
+var configFile     = path.resolve(__dirname, '../../config.json');
+var config         = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+var CmwnApiRequest = request.defaults({
     auth: {
         user: config.cmwn_api.user,
         pass: config.cmwn_api.password
@@ -20,16 +19,16 @@ const CmwnApiRequest = request.defaults({
  *
  * @param postBack
  */
-const reportError = (postBack) => {
+var reportError = function(postBack) {
     return report(postBack, 'error');
 };
 
 /**
- * Reports complete to skribble
+ * Reports compvare to skribble
  *
  * @param postBack
  */
-const reportSuccess = (postBack) => {
+var reportSuccess = function(postBack) {
     return report(postBack, 'success');
 };
 
@@ -39,7 +38,7 @@ const reportSuccess = (postBack) => {
  * @param postBack
  * @param status
  */
-const report = (postBack, status) => {
+var report = function(postBack, status) {
     logger.log('verbose', 'Reporting:', status, 'to:', postBack);
     CmwnApiRequest(
         postBack,
@@ -48,7 +47,7 @@ const report = (postBack, status) => {
             method: 'POST',
             json: {status: status},
         },
-        (err, response, body) => {
+        function (err, response, body) {
             if (err) {
                 logger.error('Error reporting status: ', postBack, err);
                 return;
@@ -72,15 +71,15 @@ const report = (postBack, status) => {
  * @param reject
  * @returns {Promise.<TResult>}
  */
-const fetchSkribbleData = (skribbleUrl, resolve, reject) => {
+var fetchSkribbleData = function(skribbleUrl, resolve, reject) {
     logger.log('info', 'Fetching skribble data from:', skribbleUrl);
     if (_.isEmpty(skribbleUrl)) {
-        const err = Error('Missing Skribble url for fetchSkribbleData');
+        var err = Error('Missing Skribble url for fetchSkribbleData');
         reject(err);
         throw err;
     }
 
-    return new Promise((apiResolve, apiReject) => {
+    return new Promise(function(apiResolve, apiReject) {
         CmwnApiRequest.get(skribbleUrl, (err, response, body) => {
             if (err) {
                 logger.error('Error requesting:', skribbleUrl, err);
@@ -100,11 +99,11 @@ const fetchSkribbleData = (skribbleUrl, resolve, reject) => {
             logger.log('verbose', 'Successful skribble request');
             return apiResolve(body);
         });
-    }).then(body => {
+    }).then(function(body) {
         resolve(body);
         return Promise.resolve(body);
     })
-    .catch(err => {
+    .catch(function(err) {
         logger.error('Failed to fetch skribble data: ', err);
         reject(err);
         throw err;

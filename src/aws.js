@@ -1,14 +1,13 @@
-'use strict';
-const logger     = require('./logger.js').logger;
-const _          = require('lodash');
-const fs         = require('fs');
-const path       = require('path');
-const configFile = path.resolve(__dirname, '../config.json');
-const config     = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-const AWS        = require('aws-sdk');
-const s3         = new AWS.S3();
-const bucketName = config.aws.bucket_name;
-const jimp       = require('jimp');
+var logger     = require('./logger.js').logger;
+var _          = require('lodash');
+var fs         = require('fs');
+var path       = require('path');
+var configFile = path.resolve(__dirname, '../config.json');
+var config     = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+var AWS        = require('aws-sdk');
+var s3         = new AWS.S3();
+var bucketName = config.aws.bucket_name;
+var jimp       = require('jimp');
 
 module.exports = {
     /**
@@ -18,14 +17,14 @@ module.exports = {
      * @param reject
      * @returns {Promise.<T>}
      */
-    uploadAsset: (asset, resolve, reject) => {
+    uploadAsset: function(asset, resolve, reject) {
         return new Promise((awsResolve, awsReject) => {
             asset.img.getBuffer(jimp.MIME_PNG, (err, buffer) => {
                 if (err) {
                     throw Error(err);
                 }
 
-                const params = {
+                var params = {
                     Bucket: bucketName,
                     Key: asset.asset_id + '.png',
                     Body: buffer,
@@ -47,7 +46,7 @@ module.exports = {
 
         })
         .then(resolve)
-        .catch(err => {
+        .catch(function(err) {
             logger.error('Failed to upload asset to s3: ', err);
             reject(err);
             throw err;
