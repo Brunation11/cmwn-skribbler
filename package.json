@@ -1,0 +1,31 @@
+{
+  "name": "cmwn-skribbler",
+  "version": "1.0.0",
+  "description": "The skrambler for a skribble",
+  "main": "skramble.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ginasink/cmwn-skribbler.git"
+  },
+  "author": "Chuck \"MANCHUCK\" Reeves",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ginasink/cmwn-skribbler/issues"
+  },
+  "homepage": "https://github.com/ginasink/cmwn-skribbler#readme",
+  "dependencies": {
+    "jimp": "^0.2.27",
+    "lodash": "^4.17.4",
+    "request": "^2.79.0",
+    "rollbar": "^0.6.3",
+    "skribble-utils": "ginasink/skribble-utils.git#7213f12ee699ae75d80981d297ba992648aef56b"
+  },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "child_process": "^1.0.2",
+    "mocha": "^3.2.0"
+  }
+}
