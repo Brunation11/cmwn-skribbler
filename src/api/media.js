@@ -118,6 +118,12 @@ module.exports = {
             MediaFileRequest(
                 asset.asset_src,
                 function (err, response, data) {
+                    if (err) {
+                        logger.error('Error downloading asset:', asset.asset_src, err);
+                        dlReject(err);
+                        return;
+                    }
+
                     var hashing;
                     var hash;
 

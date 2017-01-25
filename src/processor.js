@@ -1,7 +1,7 @@
 'use strict';
 var logger = require('./logger.js').logger;
 var _           = require('lodash');
-var Asset       = require('./asset').Asset;
+const Asset       = require('./asset').Asset;
 var utils       = require('skribble-utils');
 var skribbleApi = require('./api/api');
 var MediaApi    = require('./api/media');
@@ -56,7 +56,9 @@ module.exports = {
                 .then(function(skribbleJson) {
                     logger.log('info','Building asset list');
                     var assetSpecs = [];
-                    assetSpecs.push(grabAssets([skribbleJson.rules.background], 1));
+                    if (skribbleJson.rules.background) {
+                        assetSpecs.push(grabAssets([skribbleJson.rules.background], 1));
+                    }
                     assetSpecs.push(grabAssets(skribbleJson.rules.items, 2));
                     assetSpecs.push(grabAssets(skribbleJson.rules.messages, 3));
 

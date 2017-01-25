@@ -169,6 +169,7 @@ module.exports = {
             .then(function(img) {
                 asset.img    = img;
                 asset.layer  = -1;
+                asset.src = 'Blank.png';
                 asset.height = img.bitmap.height;
                 asset.width  = img.bitmap.width;
                 resolve(asset);
