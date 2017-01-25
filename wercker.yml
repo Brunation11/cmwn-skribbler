@@ -1,0 +1,67 @@
+box:
+  id: cmwn/front-node:6-wheezy
+test:
+  steps:
+    - script:
+      name: Checking version
+      code: $PWD/bin/check_version.sh
+    - script:
+      name: Install packages
+      code: npm prune && npm install && tar cf $WERCKER_CACHE_DIR/nm_cache.tar node_modules
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_URL
+build:
+  steps:
+    - script:
+      name: Build packages
+      code: gulp build
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_URL
+release:
+  box:
+    id: cmwn/python
+    username: $DOCKER_USER
+    password: $DOCKER_PASS
+    entrypoint: /bin/bash -c
+  steps:
+    - script:
+      name: Preparing release and Uploading zip artifact
+      code: |-
+        export VERSION="$($PWD/bin/version_bump.sh --print-current)"
+        echo "$VERSION"
+        mkdir -p artifact
+        mv build.zip artifact/skrambler-$VERSION.zip
+        ls -al artifact/skrambler-$VERSION.zip
+        echo "Changed file name"
+    - github-create-release:
+      name: Creating release on github
+      token: $MC_GITHUB_TOKEN
+      tag: $VERSION
+      draft: false
+    - script:
+      name: Uploading to s3
+      code: |-
+        echo "Uploading to S3"
+        python /deploy_to_s3.py -v --version $VERSION
+
+deploy:
+  box:
+    id: cmwn/python
+    username: $DOCKER_USER
+    password: $DOCKER_PASS
+    entrypoint: /bin/bash -c
+  steps:
+    - script:
+      name: Preparing release
+      code: |-
+        export VERSION="$($PWD/bin/version_bump.sh --print-current)"
+    - script:
+      name: Running deploy
+      code: |-
+        echo "Deploying $DEPLOY_APP_NAME @ $VERSION to $DEPLOY_ENV"
+        python /deploy.py $VERSION $DEPLOY_APP_NAME $DEPLOY_ENV -v
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_URL
