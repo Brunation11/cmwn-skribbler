@@ -8,6 +8,9 @@ test:
     - script:
       name: Install packages
       code: npm prune && npm install && tar cf $WERCKER_CACHE_DIR/nm_cache.tar node_modules
+    - script:
+      name: Install GULP
+      code: npm install gulp gulp-zip
   after-steps:
     - slack-notifier:
       url: $SLACK_URL
