@@ -207,7 +207,7 @@ module.exports = {
                 return rotateImage(asset);
             })
             .then(function(asset) {
-                logger.log('verbose','Adding corners:', asset.asset_id);
+                logger.log('debug','Adding corners:', asset.asset_id);
 
                 asset.corners = utils.getAssetCorners(asset);
                 return asset;

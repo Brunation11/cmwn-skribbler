@@ -33,7 +33,8 @@ var Asset = function(
     hash_type,
     hash_value,
     img,
-    type
+    type,
+    mime
 ) {
     this.asset_id    = _.defaultTo(asset_id, null);
     this.asset_src   = _.defaultTo(asset_src, null);
@@ -50,6 +51,7 @@ var Asset = function(
     this.hash_value  = _.defaultTo(hash_value, null);
     this.img         = _.defaultTo(img, null);
     this.type        = _.defaultTo(type, null);
+    this.mime_type   = _.defaultTo(mime, 'image/png');
 };
 
 module.exports = {

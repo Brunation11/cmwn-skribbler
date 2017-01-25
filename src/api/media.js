@@ -1,12 +1,13 @@
 var logger = require('../logger.js').logger;
-var request          = require('request');
 var _                = require('lodash');
 var fs               = require('fs');
 var config           = JSON.parse(fs.readFileSync('config.json', 'utf8'));
 var jimp             = require('jimp');
-var MediaApiRequests = request.defaults({
-    timeout: 30000,
-    strictSSL: false,
+var crypto           = require('crypto');
+var MediaFileRequest = require('request').defaults({ encoding: null });
+var MediaApiRequests = require('request').defaults({
+    timeout: 30000, // 30 secounds should be good enough
+    strictSSL: true,
     json: true
 });
 
@@ -28,6 +29,7 @@ function fillAssetData(asset, mediaData) {
     asset.hash_type   = media.check.type;
     asset.hash_value  = media.check.value;
     asset.type        = media.asset_type;
+    asset.mime        = media.mime_type;
     return asset;
 }
 
@@ -111,22 +113,57 @@ module.exports = {
             return resolve(imageCache[asset.asset_id].clone());
         }
 
-        logger.log('debug', 'Cache miss for downloading image:', asset.asset_id);
+        logger.log('debug', 'Cache miss for downloading image:', asset.asset_src);
+        return new Promise((dlResolve, dlReject) => {
+            MediaFileRequest(
+                asset.asset_src,
+                function (err, response, data) {
+                    var hashing;
+                    var hash;
 
-        return jimp.read(asset.asset_src)
-            .then(function(img) {
-                imageCache[asset.asset_id] = img;
-                asset.img = img;
-                asset.height = img.bitmap.height;
-                asset.width = img.bitmap.width;
-                logger.log('verbose', 'Image downloaded for asset:', asset.asset_id);
-                logger.log('debug', 'Data for asset_id (height, width):', asset.asset_id, asset.height, asset.width);
-                resolve(asset);
-                return asset;
-            }).catch(function(err) {
-                logger.error('Failed to download image for asset:', asset.asset_id, err);
-                reject(err);
-                throw err;
-            });
+                    if (!config.media_api.validate_hash) {
+                        logger.log('verbose', 'Not validating file hash');
+                        return jimp.read(data).then(dlResolve);
+                    }
+
+                    logger.log('verbose', 'Validating file hash');
+                    switch (asset.hash_type) {
+                        case 'sha1':
+                            logger.log('debug', 'Using SHA1');
+                            hashing = crypto.createHash('sha1');
+                            break;
+
+                        default:
+                        case 'md5':
+                            logger.log('debug', 'Using MD5');
+                            hashing = crypto.createHash('md5');
+                            break;
+                    }
+
+                    hashing.update(data);
+                    hash = hashing.digest('hex');
+                    logger.log('debug', 'Checking hash:', asset.hash_value, 'to', hash);
+                    if (asset.hash_value == hash) {
+                        return jimp.read(data).then(dlResolve);
+                    }
+
+                    dlReject(Error('Hash mis-match!'));
+                }
+            );
+        })
+        .then(img => {
+            imageCache[asset.asset_id] = img;
+            asset.img = img;
+            asset.height = img.bitmap.height;
+            asset.width = img.bitmap.width;
+            logger.log('verbose', 'Image downloaded for asset:', asset.asset_id);
+            logger.log('debug', 'Data for asset_id (height, width):', asset.asset_id, asset.height, asset.width);
+            resolve(asset);
+            return asset;
+        }).catch(function(err) {
+            logger.error('Failed to download image for asset:', asset.asset_id, err);
+            reject(err);
+            throw err;
+        });
     }
 };

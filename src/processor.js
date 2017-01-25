@@ -1,3 +1,4 @@
+'use strict';
 var logger = require('./logger.js').logger;
 var _           = require('lodash');
 var Asset       = require('./asset').Asset;
