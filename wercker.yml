@@ -35,6 +35,13 @@ release:
         mv build.zip artifact/skrambler-$VERSION.zip
         ls -al artifact/skrambler-$VERSION.zip
         echo "Changed file name"
+    - s3sync:
+      name: Uploading package to Amazon S3
+      key-id: $AWS_ACCESS_KEY_ID
+      key-secret: $AWS_SECRET_ACCESS_KEY
+      bucket-url: $AWS_BUCKET_URL
+      source-dir: artifact/
+      delete-removed: false
     - github-create-release:
       name: Creating release on github
       token: $MC_GITHUB_TOKEN
