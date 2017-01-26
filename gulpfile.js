@@ -1,7 +1,6 @@
 var _ = require('lodash');
 var gulp = require('gulp');
 var fs = require('fs');
-var eslint = require('gulp-eslint');
 var buildTask = [
     'build'
 ];
