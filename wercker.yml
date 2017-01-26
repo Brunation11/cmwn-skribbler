@@ -53,23 +53,3 @@ release:
       code: |-
         echo "Uploading to S3"
         python /deploy_to_s3.py -v --version $VERSION
-
-deploy:
-  box:
-    id: cmwn/python
-    username: $DOCKER_USER
-    password: $DOCKER_PASS
-    entrypoint: /bin/bash -c
-  steps:
-    - script:
-      name: Preparing release
-      code: |-
-        export VERSION="$($PWD/bin/version_bump.sh --print-current)"
-    - script:
-      name: Running deploy
-      code: |-
-        echo "Deploying $DEPLOY_APP_NAME @ $VERSION to $DEPLOY_ENV"
-        python /deploy.py $VERSION $DEPLOY_APP_NAME $DEPLOY_ENV -v
-  after-steps:
-    - slack-notifier:
-      url: $SLACK_URL
