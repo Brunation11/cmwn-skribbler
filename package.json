@@ -24,7 +24,7 @@
     "lodash": "^4.17.4",
     "request": "^2.79.0",
     "rollbar": "^0.6.3",
-    "skribble-utils": "ginasink/skribble-utils.git#b770f4fef922cbfac9646b8d3ce903ea29251ae6",
+    "skribble-utils": "https://github.com/ginasink/skribble-utils.git#02abab7be3d1b69a27eb7fcdc802682f4edceeac",
     "winston": "^2.3.1",
     "winston-rollbar": "^0.2.0"
   },

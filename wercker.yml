@@ -6,6 +6,9 @@ build:
       name: Checking version
       code: $PWD/bin/check_version.sh
     - script:
+      name: Adding token to $PACKAGE_FILE
+      code: sed -i -- "s/github.com\/ginasink\/skribble-utils/$MC_GITHUB_TOKEN@github.com\/ginasink\/skribble-utils/" $PACKAGE_FILE
+    - script:
       name: Install packages
       code: npm prune && npm install && tar cf $WERCKER_CACHE_DIR/nm_cache.tar node_modules
     - script:
