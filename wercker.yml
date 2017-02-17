@@ -1,0 +1,55 @@
+box:
+  id: cmwn/front-node:6-wheezy
+build:
+  steps:
+    - script:
+      name: Checking version
+      code: $PWD/bin/check_version.sh
+    - script:
+      name: Adding token to $PACKAGE_FILE
+      code: sed -i -- "s/github.com\/ginasink\/skribble-utils/$MC_GITHUB_TOKEN@github.com\/ginasink\/skribble-utils/" $PACKAGE_FILE
+    - script:
+      name: Install packages
+      code: npm prune && npm install && tar cf $WERCKER_CACHE_DIR/nm_cache.tar node_modules
+    - script:
+      name: Install GULP
+      code: npm install gulp gulp-zip
+    - script:
+      name: Build packages
+      code: gulp build
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_URL
+release:
+  box:
+    id: cmwn/python
+    username: $DOCKER_USER
+    password: $DOCKER_PASS
+    entrypoint: /bin/bash -c
+  steps:
+    - script:
+      name: Preparing release and Uploading zip artifact
+      code: |-
+        export VERSION="$($PWD/bin/version_bump.sh --print-current)"
+        echo "$VERSION"
+        mkdir -p artifact
+        mv build.zip artifact/skrambler-$VERSION.zip
+        ls -al artifact/skrambler-$VERSION.zip
+        echo "Changed file name"
+    - s3sync:
+      name: Uploading package to Amazon S3
+      key-id: $AWS_ACCESS_KEY_ID
+      key-secret: $AWS_SECRET_ACCESS_KEY
+      bucket-url: $AWS_BUCKET_URL
+      source-dir: artifact/
+      delete-removed: false
+    - github-create-release:
+      name: Creating release on github
+      token: $MC_GITHUB_TOKEN
+      tag: $VERSION
+      draft: false
+    - script:
+      name: Uploading to s3
+      code: |-
+        echo "Uploading to S3"
+        python /deploy_to_s3.py -v --version $VERSION
